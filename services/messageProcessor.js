@@ -256,6 +256,8 @@ async function updateSession(session, updateData) {
  */
 async function processIntent(intent, messageContent, session, shopInfo) {
     try {
+        console.log('Processing intent:', intent, 'for user:', session.user_phone);
+
         switch (intent) {
             case 'book_appointment':
                 await handleBookAppointment(messageContent, session, shopInfo);
@@ -281,8 +283,22 @@ async function processIntent(intent, messageContent, session, shopInfo) {
             case 'select_service':
                 await handleServiceSelection(messageContent, session, shopInfo);
                 break;
+            case 'select_barber':
+                await handleBarberSelection(messageContent, session, shopInfo);
+                break;
+            case 'select_time':
+                // TODO: Implement time selection
+                await sendWhatsAppMessage(session.user_phone, 'Time selection functionality will be implemented in the next phase.');
+                break;
             default:
-                await handleWelcome(session, shopInfo);
+                // Check session phase to determine what to do
+                if (session.phase === 'service_selection') {
+                    await handleServiceSelection(messageContent, session, shopInfo);
+                } else if (session.phase === 'barber_selection') {
+                    await handleBarberSelection(messageContent, session, shopInfo);
+                } else {
+                    await handleWelcome(session, shopInfo);
+                }
                 break;
         }
     } catch (error) {
@@ -452,47 +468,203 @@ Is there anything specific I can help you with regarding appointments?`;
  */
 async function handleServiceSelection(messageContent, session, shopInfo) {
     try {
+        console.log('Handling service selection:', messageContent);
+
+        let selectedService = null;
+
         // Check if it's a button selection (service_key format)
         if (messageContent.startsWith('service_')) {
             const serviceKey = messageContent.replace('service_', '');
-            const service = await ServiceCatalog.findOne({ service_key: serviceKey });
+            console.log('Button service selection, service key:', serviceKey);
 
-            if (service) {
-                // Update session with selected service
-                await updateSession(session, {
-                    selected_service: serviceKey,
-                    phase: 'barber_selection'
-                });
+            selectedService = await ServiceCatalog.findOne({
+                service_key: serviceKey,
+                is_active: true
+            });
 
-                // Get available barbers
-                const barbers = await Barber.find({
-                    shop_id: shopInfo.shop_id,
-                    active: true
-                }).sort({ sort_order: 1 });
-
-                if (barbers.length > 0) {
-                    // Send barber selection message
-                    const barberButtons = barbers.slice(0, 3).map(barber => ({
-                        id: `barber_${barber.barber_id}`,
-                        title: barber.name
-                    }));
-
-                    await sendButtonMessage(
-                        session.user_phone,
-                        `Great! You selected ${service.label}. Now choose your barber:`,
-                        barberButtons
-                    );
-                } else {
-                    await sendWhatsAppMessage(session.user_phone, `Great! You selected ${service.label}. Let me check available barbers and get back to you.`);
-                }
+            if (selectedService) {
+                console.log('Found service from button:', selectedService.label);
             }
         } else {
             // Handle text-based service selection
-            await handleListServices(session, shopInfo);
+            console.log('Text-based service selection, searching for:', messageContent);
+
+            // Try to find service by name or partial match
+            selectedService = await ServiceCatalog.findOne({
+                $or: [
+                    { label: { $regex: messageContent, $options: 'i' } },
+                    { service_key: { $regex: messageContent, $options: 'i' } }
+                ],
+                is_active: true
+            });
+
+            if (selectedService) {
+                console.log('Found service from text:', selectedService.label);
+            }
         }
+
+        if (!selectedService) {
+            console.log('Service not found, showing available services');
+            await handleListServices(session, shopInfo);
+            return;
+        }
+
+        // Update session with selected service
+        console.log('Updating session with selected service:', selectedService.service_key);
+        await updateSession(session, {
+            selected_service: selectedService.service_key,
+            phase: 'barber_selection',
+            intent: 'select_barber',
+            context_data: {
+                ...session.context_data,
+                selected_service_name: selectedService.label,
+                selected_service_duration: selectedService.duration_min,
+                selected_service_price: selectedService.default_price,
+                service_selected_at: new Date()
+            }
+        });
+
+        // Get available barbers for this shop
+        console.log('Getting available barbers for shop:', shopInfo.shop_id);
+        const barbers = await Barber.find({
+            shop_id: shopInfo.shop_id,
+            active: true
+        }).sort({ sort_order: 1 });
+
+        console.log('Found barbers:', barbers.length);
+
+        if (barbers.length === 0) {
+            await sendWhatsAppMessage(
+                session.user_phone,
+                `Great! You selected ${selectedService.label} (${selectedService.duration_min} min, ₹${selectedService.default_price}).\n\nUnfortunately, no barbers are currently available. Please try again later or contact us directly.`
+            );
+            return;
+        }
+
+        // Prepare barber selection message
+        const barberSelectionText = `🎯 *Perfect choice!* You selected:\n\n` +
+            `✂️ *${selectedService.label}*\n` +
+            `⏱️ Duration: ${selectedService.duration_min} minutes\n` +
+            `💰 Price: ₹${selectedService.default_price}\n\n` +
+            `👨‍💼 *Now choose your barber:*\n\n` +
+            ` *Tip:* Reply "back" to change your service selection.`;
+
+        // Create barber buttons (max 3 buttons for WhatsApp)
+        const barberButtons = barbers.slice(0, 3).map(barber => ({
+            id: `barber_${barber.barber_id}`,
+            title: barber.name
+        }));
+
+        // If there are more than 3 barbers, add a "More Barbers" button
+        if (barbers.length > 3) {
+            barberButtons.push({
+                id: 'more_barbers',
+                title: 'More Barbers'
+            });
+        }
+
+        // Send interactive button message with barber selection
+        await sendButtonMessage(session.user_phone, barberSelectionText, barberButtons);
+
+        console.log('Barber selection message sent to:', session.user_phone);
+
     } catch (error) {
         console.error('Error handling service selection:', error);
         await sendWhatsAppMessage(session.user_phone, 'Sorry, I couldn\'t process your service selection. Please try again.');
+    }
+}
+
+/**
+ * Handle barber selection from button or text
+ * @param {String} messageContent - User's message content
+ * @param {Object} session - User session
+ * @param {Object} shopInfo - Shop information
+ */
+async function handleBarberSelection(messageContent, session, shopInfo) {
+    try {
+        console.log('Handling barber selection:', messageContent);
+
+        let selectedBarber = null;
+
+        // Check if it's a button selection (barber_id format)
+        if (messageContent.startsWith('barber_')) {
+            const barberId = messageContent.replace('barber_', '');
+            console.log('Button barber selection, barber ID:', barberId);
+
+            selectedBarber = await Barber.findOne({
+                barber_id: barberId,
+                shop_id: shopInfo.shop_id,
+                active: true
+            });
+
+            if (selectedBarber) {
+                console.log('Found barber from button:', selectedBarber.name);
+            }
+        } else if (messageContent === 'more_barbers') {
+            // Handle "More Barbers" button
+            await handleListBarbers(session, shopInfo);
+            return;
+        } else {
+            // Handle text-based barber selection
+            console.log('Text-based barber selection, searching for:', messageContent);
+
+            selectedBarber = await Barber.findOne({
+                $or: [
+                    { name: { $regex: messageContent, $options: 'i' } },
+                    { barber_id: { $regex: messageContent, $options: 'i' } }
+                ],
+                shop_id: shopInfo.shop_id,
+                active: true
+            });
+
+            if (selectedBarber) {
+                console.log('Found barber from text:', selectedBarber.name);
+            }
+        }
+
+        if (!selectedBarber) {
+            console.log('Barber not found, showing available barbers');
+            await handleListBarbers(session, shopInfo);
+            return;
+        }
+
+        // Update session with selected barber
+        console.log('Updating session with selected barber:', selectedBarber.barber_id);
+        await updateSession(session, {
+            selected_barber_id: selectedBarber.barber_id,
+            selected_barber_name: selectedBarber.name,
+            phase: 'time_selection',
+            intent: 'select_time',
+            context_data: {
+                ...session.context_data,
+                barber_selected_at: new Date()
+            }
+        });
+
+        // Get service details for confirmation
+        const service = await ServiceCatalog.findOne({
+            service_key: session.selected_service
+        });
+
+        // Send confirmation message
+        const confirmationText = `🎉 *Excellent! Your selection:*\n\n` +
+            `✂️ *Service:* ${service ? service.label : 'Selected Service'}\n` +
+            `👨‍💼 *Barber:* ${selectedBarber.name}\n` +
+            `⏱️ *Duration:* ${service ? service.duration_min : 'N/A'} minutes\n` +
+            `💰 *Price:* ₹${service ? service.default_price : 'N/A'}\n\n` +
+            `📅 *Next step:* Choose your preferred date and time.\n\n` +
+            ` *Tip:* Reply "back" to change your barber selection.`;
+
+        await sendWhatsAppMessage(session.user_phone, confirmationText);
+
+        // TODO: Add time selection flow here
+        await sendWhatsAppMessage(session.user_phone, 'Time selection functionality will be implemented in the next phase. For now, please contact us directly to complete your booking.');
+
+        console.log('Barber selection completed for:', session.user_phone);
+
+    } catch (error) {
+        console.error('Error handling barber selection:', error);
+        await sendWhatsAppMessage(session.user_phone, 'Sorry, I couldn\'t process your barber selection. Please try again.');
     }
 }
 
