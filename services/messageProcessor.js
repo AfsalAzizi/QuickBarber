@@ -136,19 +136,22 @@ async function getShopFromPhoneNumber(phoneNumberId) {
         // Ensure connection is fully ready before querying
         await ensureConnection();
 
-        // Double-check connection state
-        if (mongoose.connection.readyState !== 1) {
-            console.log('Connection not ready, waiting...');
-            await new Promise((resolve) => {
-                mongoose.connection.once('connected', resolve);
-            });
-        }
-
         console.log('Mongoose connection state before query:', mongoose.connection.readyState);
 
-        // Execute query with proper error handling
+        // Test 1: Try a simple count query first
+        console.log('Testing with count query...');
+        const count = await WabaNumber.countDocuments();
+        console.log('Total WABA numbers:', count);
+
+        // Test 2: Try to find any document
+        console.log('Testing with findOne query...');
+        const anyDoc = await WabaNumber.findOne();
+        console.log('Any WABA document:', anyDoc);
+
+        // Test 3: Try the actual query
+        console.log('Starting specific WABA number query...');
         const wabaNumber = await WabaNumber.findOne({ phone_number_id: phoneNumberId })
-            .maxTimeMS(5000)
+            .maxTimeMS(2000)
             .lean();
 
         console.log('WABA number query result:', wabaNumber);
@@ -158,8 +161,9 @@ async function getShopFromPhoneNumber(phoneNumberId) {
             return null;
         }
 
+        // Continue with settings query...
         const settings = await Settings.findOne({ shop_id: wabaNumber.shop_id })
-            .maxTimeMS(5000)
+            .maxTimeMS(2000)
             .lean();
 
         console.log('Settings query result:', settings);
