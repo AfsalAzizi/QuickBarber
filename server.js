@@ -20,15 +20,20 @@ app.use(express.urlencoded({ extended: true }));
 
 // MongoDB Connection
 mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/quickbarber', {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
+    serverSelectionTimeoutMS: 5000,
+    socketTimeoutMS: 45000,
+    maxPoolSize: 10,
+    serverSelectionRetryDelayMS: 5000,
+    bufferMaxEntries: 0
 })
     .then(() => {
         console.log('Connected to MongoDB');
     })
     .catch((error) => {
         console.error('MongoDB connection error:', error);
-        process.exit(1);
+        if (process.env.NODE_ENV !== 'production') {
+            process.exit(1);
+        }
     });
 
 // Routes
