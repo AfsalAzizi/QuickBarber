@@ -5,7 +5,6 @@ let isConnected = false;
 
 async function connectToDatabase() {
     if (isConnected && mongoose.connection.readyState === 1) {
-        console.log('Database already connected');
         return;
     }
 
@@ -14,9 +13,8 @@ async function connectToDatabase() {
             serverSelectionTimeoutMS: 5000,
             socketTimeoutMS: 45000,
             maxPoolSize: 10,
-            bufferCommands: true, // Enable buffering for serverless
+            bufferCommands: true,
             maxIdleTimeMS: 10000,
-            // Remove deprecated options: serverSelectionRetryDelayMS, bufferMaxEntries
         });
 
         isConnected = true;
@@ -28,21 +26,32 @@ async function connectToDatabase() {
     }
 }
 
-// Add function to check connection status
-function isDatabaseConnected() {
-    return mongoose.connection.readyState === 1;
-}
-
-// Add function to ensure connection
 async function ensureConnection() {
-    if (!isDatabaseConnected()) {
-        console.log('Database not connected, attempting to connect...');
+    // Wait for connection to be fully ready
+    if (mongoose.connection.readyState !== 1) {
+        console.log('Database not ready, connecting...');
         await connectToDatabase();
+
+        // Wait for connection to be fully established
+        await new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => {
+                reject(new Error('Connection timeout'));
+            }, 5000);
+
+            mongoose.connection.once('connected', () => {
+                clearTimeout(timeout);
+                resolve();
+            });
+
+            mongoose.connection.once('error', (err) => {
+                clearTimeout(timeout);
+                reject(err);
+            });
+        });
     }
 }
 
 module.exports = {
     connectToDatabase,
-    isDatabaseConnected,
     ensureConnection
 };

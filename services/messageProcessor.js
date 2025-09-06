@@ -131,43 +131,45 @@ function extractMessageContent(message) {
  */
 async function getShopFromPhoneNumber(phoneNumberId) {
     try {
-        console.log('Searching for WABA number with phone_number_id:', phoneNumberId, 'type:', typeof phoneNumberId);
+        console.log('Searching for WABA number with phone_number_id:', phoneNumberId);
 
-        // Ensure database connection before query
+        // Ensure connection is fully ready before querying
         await ensureConnection();
+
+        // Double-check connection state
+        if (mongoose.connection.readyState !== 1) {
+            console.log('Connection not ready, waiting...');
+            await new Promise((resolve) => {
+                mongoose.connection.once('connected', resolve);
+            });
+        }
 
         console.log('Mongoose connection state before query:', mongoose.connection.readyState);
 
-        // Add timeout wrapper around the entire query
-        const queryPromise = WabaNumber.findOne({ phone_number_id: phoneNumberId })
-            .maxTimeMS(5000) // Reduced timeout for Vercel
+        // Execute query with proper error handling
+        const wabaNumber = await WabaNumber.findOne({ phone_number_id: phoneNumberId })
+            .maxTimeMS(5000)
             .lean();
 
-        console.log('Starting WABA number query...');
-        const wabaNumber = await queryPromise;
-        console.log('WABA number query completed successfully');
         console.log('WABA number query result:', wabaNumber);
 
         if (!wabaNumber) {
-            console.log('No WABA number found for phone_number_id:', phoneNumberId);
+            console.log('No WABA number found');
             return null;
         }
 
-        console.log('Found WABA number, getting settings for shop_id:', wabaNumber.shop_id);
-
-        // Add timeout and error handling for Settings query
         const settings = await Settings.findOne({ shop_id: wabaNumber.shop_id })
-            .maxTimeMS(5000) // Reduced timeout for Vercel
+            .maxTimeMS(5000)
             .lean();
 
         console.log('Settings query result:', settings);
 
         if (!settings) {
-            console.log('No settings found for shop_id:', wabaNumber.shop_id);
+            console.log('No settings found');
             return null;
         }
 
-        const result = {
+        return {
             shop_id: wabaNumber.shop_id,
             phone_number_id: phoneNumberId,
             display_phone_number: wabaNumber.display_phone_number,
@@ -175,17 +177,8 @@ async function getShopFromPhoneNumber(phoneNumberId) {
             settings
         };
 
-        console.log('Returning shop info:', result);
-        return result;
-
     } catch (error) {
         console.error('Error in getShopFromPhoneNumber:', error);
-        console.error('Error details:', {
-            message: error.message,
-            name: error.name,
-            code: error.code,
-            stack: error.stack
-        });
         return null;
     }
 }
