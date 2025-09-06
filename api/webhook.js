@@ -10,11 +10,22 @@ async function handleGet(req, res) {
     const token = req.query['hub.verify_token'];
     const challenge = req.query['hub.challenge'];
 
+    console.log('Webhook verification attempt:', {
+        mode,
+        token: token ? '***' : 'missing',
+        challenge: challenge ? '***' : 'missing',
+        expectedToken: process.env.WEBHOOK_VERIFY_TOKEN ? '***' : 'MISSING_ENV_VAR'
+    });
+
     if (mode === 'subscribe' && token === process.env.WEBHOOK_VERIFY_TOKEN) {
         console.log('Webhook verified successfully');
         return res.status(200).send(challenge);
     } else {
-        console.log('Webhook verification failed');
+        console.log('Webhook verification failed:', {
+            modeMatch: mode === 'subscribe',
+            tokenMatch: token === process.env.WEBHOOK_VERIFY_TOKEN,
+            hasEnvVar: !!process.env.WEBHOOK_VERIFY_TOKEN
+        });
         return res.status(403).json({ error: 'Forbidden' });
     }
 }
@@ -22,14 +33,33 @@ async function handleGet(req, res) {
 // Handler for POST requests (message processing)
 async function handlePost(req, res) {
     try {
-        // Parse JSON safely
+        console.log('POST request received:', {
+            contentType: req.headers['content-type'],
+            bodyType: typeof req.body,
+            bodyLength: req.body ? req.body.length : 0,
+            bodyPreview: req.body ? req.body.substring(0, 200) : 'no body'
+        });
+
+        // Handle different content types
         let body;
-        try {
-            body = JSON.parse(req.body);
-        } catch (parseError) {
-            console.log('Invalid JSON payload');
-            return res.status(400).json({ error: 'Invalid JSON' });
+        if (req.headers['content-type'] === 'application/json') {
+            // Body is already parsed by Vercel
+            body = req.body;
+        } else if (typeof req.body === 'string') {
+            // Try to parse as JSON
+            try {
+                body = JSON.parse(req.body);
+            } catch (parseError) {
+                console.log('Invalid JSON payload:', parseError.message);
+                console.log('Raw body:', req.body);
+                return res.status(400).json({ error: 'Invalid JSON' });
+            }
+        } else {
+            // Body is already an object
+            body = req.body;
         }
+
+        console.log('Parsed body:', JSON.stringify(body, null, 2));
 
         // Optional signature verification
         if (process.env.WEBHOOK_SECRET || process.env.WHATSAPP_APP_SECRET) {
@@ -42,7 +72,7 @@ async function handlePost(req, res) {
             const secret = process.env.WEBHOOK_SECRET || process.env.WHATSAPP_APP_SECRET;
             const expectedSignature = crypto
                 .createHmac('sha256', secret)
-                .update(req.body)
+                .update(typeof req.body === 'string' ? req.body : JSON.stringify(req.body))
                 .digest('hex');
 
             const providedSignature = signature.replace('sha256=', '');
@@ -81,6 +111,8 @@ async function handlePost(req, res) {
 
 // Process WhatsApp webhook data structure
 async function processWebhookData(body) {
+    console.log('Processing webhook data:', JSON.stringify(body, null, 2));
+
     if (body.object !== 'whatsapp_business_account') {
         console.log('Ignoring non-WhatsApp payload');
         return;
