@@ -36,30 +36,18 @@ async function handlePost(req, res) {
         console.log('POST request received:', {
             contentType: req.headers['content-type'],
             bodyType: typeof req.body,
-            bodyLength: req.body ? req.body.length : 0,
-            bodyPreview: req.body ? req.body.substring(0, 200) : 'no body'
+            hasBody: !!req.body
         });
 
-        // Handle different content types
-        let body;
-        if (req.headers['content-type'] === 'application/json') {
-            // Body is already parsed by Vercel
-            body = req.body;
-        } else if (typeof req.body === 'string') {
-            // Try to parse as JSON
-            try {
-                body = JSON.parse(req.body);
-            } catch (parseError) {
-                console.log('Invalid JSON payload:', parseError.message);
-                console.log('Raw body:', req.body);
-                return res.status(400).json({ error: 'Invalid JSON' });
-            }
-        } else {
-            // Body is already an object
-            body = req.body;
+        // Body is already parsed by Vercel as JSON
+        const body = req.body;
+
+        if (!body) {
+            console.log('No body received');
+            return res.status(400).json({ error: 'No body' });
         }
 
-        console.log('Parsed body:', JSON.stringify(body, null, 2));
+        console.log('Received body:', JSON.stringify(body, null, 2));
 
         // Optional signature verification
         if (process.env.WEBHOOK_SECRET || process.env.WHATSAPP_APP_SECRET) {
@@ -72,7 +60,7 @@ async function handlePost(req, res) {
             const secret = process.env.WEBHOOK_SECRET || process.env.WHATSAPP_APP_SECRET;
             const expectedSignature = crypto
                 .createHmac('sha256', secret)
-                .update(typeof req.body === 'string' ? req.body : JSON.stringify(req.body))
+                .update(JSON.stringify(body))
                 .digest('hex');
 
             const providedSignature = signature.replace('sha256=', '');
@@ -185,12 +173,12 @@ async function handler(req, res) {
 // Export for Vercel
 module.exports = handler;
 
-// Preserve raw body for signature verification
-module.exports.config = {
-    api: {
-        bodyParser: false
-    }
-};
+// Remove this line - let Vercel handle JSON parsing automatically
+// module.exports.config = {
+//     api: {
+//         bodyParser: false
+//     }
+// };
 
 /*
 ACCEPTANCE TESTS:
