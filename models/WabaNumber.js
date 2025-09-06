@@ -1,0 +1,64 @@
+const mongoose = require('mongoose');
+
+const wabaNumberSchema = new mongoose.Schema({
+    phone_number_id: {
+        type: String,
+        required: true,
+        unique: true,
+        index: true
+    },
+    display_phone_number: {
+        type: String,
+        required: true,
+        validate: {
+            validator: function (v) {
+                return /^\+?[1-9]\d{1,14}$/.test(v);
+            },
+            message: 'Display phone number must be in international format'
+        }
+    },
+    shop_id: {
+        type: String,
+        required: true,
+        index: true
+    },
+    sheet_id: {
+        type: String,
+        default: null
+    },
+    calendar_id: {
+        type: String,
+        default: null
+    },
+    timezone: {
+        type: String,
+        required: true,
+        default: 'Asia/Kolkata'
+    },
+    welcome_template: {
+        type: String,
+        default: null
+    },
+    // Additional fields for WhatsApp Business API
+    is_active: {
+        type: Boolean,
+        default: true
+    },
+    webhook_url: {
+        type: String,
+        default: null
+    },
+    access_token: {
+        type: String,
+        default: null
+    }
+}, {
+    timestamps: true
+});
+
+// Index for efficient queries
+wabaNumberSchema.index({ phone_number_id: 1 });
+wabaNumberSchema.index({ shop_id: 1 });
+wabaNumberSchema.index({ display_phone_number: 1 });
+
+module.exports = mongoose.model('WabaNumber', wabaNumberSchema);
