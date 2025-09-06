@@ -1,6 +1,9 @@
 {
   "functions": {
-    "server.js": {
+    "api/webhook.js": {
+      "maxDuration": 30
+    },
+    "api/admin.js": {
       "maxDuration": 30
     }
   },
