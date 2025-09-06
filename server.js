@@ -3,9 +3,7 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
-const { connectToDatabase } = require('./utils/dbConnection');
 require('dotenv').config();
-
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -21,16 +19,32 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Connect to database
-connectToDatabase()
-    .then(() => {
-        console.log('MongoDB connection established');
-    })
-    .catch((error) => {
-        console.error('Failed to connect to MongoDB:', error);
+async function connectToDatabase() {
+    try {
+        if (mongoose.connection.readyState === 1) {
+            console.log('Using existing MongoDB connection');
+            return;
+        }
+
+        console.log('Connecting to MongoDB...');
+        await mongoose.connect(process.env.MONGODB_URI, {
+            serverSelectionTimeoutMS: 5000,
+            socketTimeoutMS: 45000,
+            maxPoolSize: 10,
+            bufferCommands: true,
+            maxIdleTimeMS: 10000,
+        });
+        console.log('MongoDB connected successfully');
+    } catch (error) {
+        console.error('MongoDB connection failed:', error);
         if (process.env.NODE_ENV !== 'production') {
             process.exit(1);
         }
-    });
+    }
+}
+
+// Initialize database connection
+connectToDatabase();
 
 // Routes
 app.use('/api/webhook', require('./routes/webhook'));
@@ -43,7 +57,8 @@ app.get('/health', (req, res) => {
     res.status(200).json({
         status: 'OK',
         timestamp: new Date().toISOString(),
-        environment: process.env.NODE_ENV || 'development'
+        environment: process.env.NODE_ENV || 'development',
+        dbStatus: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected'
     });
 });
 

@@ -1,8 +1,7 @@
-export const runtime = 'nodejs';
-
 const express = require('express');
 const router = express.Router();
 const { connectToDatabase } = require('../utils/dbConnection');
+const { processIncomingMessage } = require('../services/messageProcessor');
 
 // WhatsApp webhook verification endpoint
 router.get('/', (req, res) => {
@@ -40,8 +39,6 @@ router.post('/', async (req, res) => {
         res.status(500).json({ error: 'Internal server error' });
     }
 });
-
-
 
 async function processWebhookData(body) {
     try {
