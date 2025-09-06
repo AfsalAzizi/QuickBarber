@@ -66,6 +66,7 @@ function verifyWebhookSignature(payload, signature) {
 // Function to process incoming webhook data
 async function processWebhookData(body) {
     try {
+        console.log('Full webhook payload:', JSON.stringify(body, null, 2));
         // Handle different types of webhook events
         if (body.object === 'whatsapp_business_account') {
             for (const entry of body.entry) {
@@ -93,9 +94,28 @@ async function processMessages(value) {
                     timestamp: message.timestamp
                 });
 
+                // Extract phone number ID from the webhook payload
+                // The phone_number_id is usually in the metadata or we need to get it from the webhook context
+                const phoneNumberId = value.metadata?.phone_number_id ||
+                    value.phone_number_id ||
+                    process.env.WHATSAPP_PHONE_NUMBER_ID; // Fallback to env var
+
+                console.log('Phone number ID:', phoneNumberId);
+
+                if (!phoneNumberId) {
+                    console.error('No phone number ID found in webhook payload');
+                    return;
+                }
+
+                // Create metadata object
+                const metadata = {
+                    phone_number_id: phoneNumberId,
+                    display_phone_number: value.metadata?.display_phone_number
+                };
+
                 // Import the message processor
                 const { processIncomingMessage } = require('../services/messageProcessor');
-                await processIncomingMessage(message, value.metadata);
+                await processIncomingMessage(message, metadata);
             }
         }
 
