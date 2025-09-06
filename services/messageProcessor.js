@@ -131,7 +131,11 @@ async function getShopFromPhoneNumber(phoneNumberId) {
     try {
         console.log('Searching for WABA number with phone_number_id:', phoneNumberId, 'type:', typeof phoneNumberId);
 
-        const wabaNumber = await WabaNumber.findOne({ phone_number_id: phoneNumberId });
+        // Add timeout and error handling for WABA number query
+        const wabaNumber = await WabaNumber.findOne({ phone_number_id: phoneNumberId })
+            .maxTimeMS(10000) // 10 second timeout
+            .lean(); // Use lean() for better performance
+
         console.log('WABA number query result:', wabaNumber);
 
         if (!wabaNumber) {
@@ -140,7 +144,12 @@ async function getShopFromPhoneNumber(phoneNumberId) {
         }
 
         console.log('Found WABA number, getting settings for shop_id:', wabaNumber.shop_id);
-        const settings = await Settings.findOne({ shop_id: wabaNumber.shop_id });
+
+        // Add timeout and error handling for Settings query
+        const settings = await Settings.findOne({ shop_id: wabaNumber.shop_id })
+            .maxTimeMS(10000) // 10 second timeout
+            .lean(); // Use lean() for better performance
+
         console.log('Settings query result:', settings);
 
         if (!settings) {
@@ -160,7 +169,13 @@ async function getShopFromPhoneNumber(phoneNumberId) {
         return result;
 
     } catch (error) {
-        console.error('Error getting shop from phone number:', error);
+        console.error('Error in getShopFromPhoneNumber:', error);
+        console.error('Error details:', {
+            message: error.message,
+            name: error.name,
+            code: error.code,
+            stack: error.stack
+        });
         return null;
     }
 }
