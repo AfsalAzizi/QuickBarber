@@ -1,6 +1,7 @@
 const express = require('express');
 const crypto = require('crypto');
 const router = express.Router();
+const mongoose = require('mongoose');
 
 // WhatsApp webhook verification endpoint
 router.get('/', (req, res) => {
