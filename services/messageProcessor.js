@@ -7,6 +7,7 @@ const Booking = require('../models/Booking');
 const { sendWhatsAppMessage, sendButtonMessage } = require('./whatsappService');
 const { detectIntent } = require('./intentDetection');
 const moment = require('moment-timezone');
+const mongoose = require('mongoose');
 
 /**
  * Process incoming WhatsApp message
