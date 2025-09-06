@@ -314,16 +314,7 @@ async function processIntent(intent, messageContent, session, shopInfo) {
  * @param {Object} shopInfo - Shop information
  */
 async function handleWelcome(session, shopInfo) {
-    const welcomeMessage = `Welcome to ${shopInfo.settings.shop_name}! 🎉
-
-I can help you with:
-• 📅 Book an appointment
-• 🕐 Check availability
-• ✂️ View our services
-• 👨‍💼 See our barbers
-• ❌ Cancel or reschedule
-
-What would you like to do today?`;
+    const welcomeMessage = `Welcome to ${shopInfo.settings.shop_name}\n\nI can help you with:\n• Book an appointment\n• Check availability\n• View our services\n• See our barbers\n• Cancel or reschedule\n\nWhat would you like to do today?`;
 
     await sendWhatsAppMessage(session.user_phone, welcomeMessage);
 
@@ -341,15 +332,14 @@ async function handleListServices(session, shopInfo) {
         const services = await ServiceCatalog.find({ is_active: true }).sort({ sort_order: 1 });
 
         if (services.length === 0) {
-            await sendWhatsAppMessage(session.user_phone, 'Sorry, no services are currently available.');
+            await sendWhatsAppMessage(session.user_phone, 'No services are currently available.');
             return;
         }
 
-        let message = `Here are our available services:\n\n`;
+        let message = `Available Services:\n\n`;
         services.forEach((service, index) => {
             message += `${index + 1}. ${service.label}\n`;
-            message += `   Duration: ${service.duration_min} minutes\n`;
-            message += `   Price: ₹${service.default_price}\n\n`;
+            message += `   Duration: ${service.duration_min} minutes\n\n`;
         });
 
         message += `To book an appointment, please reply with the service number or name.`;
@@ -359,7 +349,7 @@ async function handleListServices(session, shopInfo) {
 
     } catch (error) {
         console.error('Error handling list services:', error);
-        await sendWhatsAppMessage(session.user_phone, 'Sorry, I couldn\'t retrieve our services. Please try again later.');
+        await sendWhatsAppMessage(session.user_phone, 'Unable to retrieve our services. Please try again later.');
     }
 }
 
@@ -376,11 +366,11 @@ async function handleListBarbers(session, shopInfo) {
         }).sort({ sort_order: 1 });
 
         if (barbers.length === 0) {
-            await sendWhatsAppMessage(session.user_phone, 'Sorry, no barbers are currently available.');
+            await sendWhatsAppMessage(session.user_phone, 'No barbers are currently available.');
             return;
         }
 
-        let message = `Here are our available barbers:\n\n`;
+        let message = `Available Barbers:\n\n`;
         barbers.forEach((barber, index) => {
             message += `${index + 1}. ${barber.name}\n`;
             if (barber.specialties && barber.specialties.length > 0) {
@@ -396,7 +386,7 @@ async function handleListBarbers(session, shopInfo) {
 
     } catch (error) {
         console.error('Error handling list barbers:', error);
-        await sendWhatsAppMessage(session.user_phone, 'Sorry, I couldn\'t retrieve our barbers. Please try again later.');
+        await sendWhatsAppMessage(session.user_phone, 'Unable to retrieve our barbers. Please try again later.');
     }
 }
 
@@ -520,7 +510,6 @@ async function handleServiceSelection(messageContent, session, shopInfo) {
                 ...session.context_data,
                 selected_service_name: selectedService.label,
                 selected_service_duration: selectedService.duration_min,
-                selected_service_price: selectedService.default_price,
                 service_selected_at: new Date()
             }
         });
@@ -537,18 +526,13 @@ async function handleServiceSelection(messageContent, session, shopInfo) {
         if (barbers.length === 0) {
             await sendWhatsAppMessage(
                 session.user_phone,
-                `Great! You selected ${selectedService.label} (${selectedService.duration_min} min, ₹${selectedService.default_price}).\n\nUnfortunately, no barbers are currently available. Please try again later or contact us directly.`
+                `Service selected: ${selectedService.label} (${selectedService.duration_min} minutes)\n\nNo barbers are currently available. Please try again later or contact us directly.`
             );
             return;
         }
 
         // Prepare barber selection message
-        const barberSelectionText = `🎯 *Perfect choice!* You selected:\n\n` +
-            `✂️ *${selectedService.label}*\n` +
-            `⏱️ Duration: ${selectedService.duration_min} minutes\n` +
-            `💰 Price: ₹${selectedService.default_price}\n\n` +
-            `👨‍💼 *Now choose your barber:*\n\n` +
-            ` *Tip:* Reply "back" to change your service selection.`;
+        const barberSelectionText = `Service selected: ${selectedService.label}\nDuration: ${selectedService.duration_min} minutes\n\nPlease select your preferred barber:\n\nReply "back" to change your service selection.`;
 
         // Create barber buttons (max 3 buttons for WhatsApp)
         const barberButtons = barbers.slice(0, 3).map(barber => ({
@@ -571,7 +555,7 @@ async function handleServiceSelection(messageContent, session, shopInfo) {
 
     } catch (error) {
         console.error('Error handling service selection:', error);
-        await sendWhatsAppMessage(session.user_phone, 'Sorry, I couldn\'t process your service selection. Please try again.');
+        await sendWhatsAppMessage(session.user_phone, 'Unable to process your service selection. Please try again.');
     }
 }
 
@@ -648,24 +632,18 @@ async function handleBarberSelection(messageContent, session, shopInfo) {
         });
 
         // Send confirmation message
-        const confirmationText = `🎉 *Excellent! Your selection:*\n\n` +
-            `✂️ *Service:* ${service ? service.label : 'Selected Service'}\n` +
-            `👨‍💼 *Barber:* ${selectedBarber.name}\n` +
-            `⏱️ *Duration:* ${service ? service.duration_min : 'N/A'} minutes\n` +
-            `💰 *Price:* ₹${service ? service.default_price : 'N/A'}\n\n` +
-            `📅 *Next step:* Choose your preferred date and time.\n\n` +
-            ` *Tip:* Reply "back" to change your barber selection.`;
+        const confirmationText = `Booking Summary:\n\nService: ${service ? service.label : 'Selected Service'}\nBarber: ${selectedBarber.name}\nDuration: ${service ? service.duration_min : 'N/A'} minutes\n\nNext step: Select your preferred date and time.\n\nReply "back" to change your barber selection.`;
 
         await sendWhatsAppMessage(session.user_phone, confirmationText);
 
         // TODO: Add time selection flow here
-        await sendWhatsAppMessage(session.user_phone, 'Time selection functionality will be implemented in the next phase. For now, please contact us directly to complete your booking.');
+        await sendWhatsAppMessage(session.user_phone, 'Time selection functionality will be implemented in the next phase. Please contact us directly to complete your booking.');
 
         console.log('Barber selection completed for:', session.user_phone);
 
     } catch (error) {
         console.error('Error handling barber selection:', error);
-        await sendWhatsAppMessage(session.user_phone, 'Sorry, I couldn\'t process your barber selection. Please try again.');
+        await sendWhatsAppMessage(session.user_phone, 'Unable to process your barber selection. Please try again.');
     }
 }
 
@@ -752,18 +730,8 @@ async function handleFirstMessage(userPhone, messageContent, shopInfo, phoneNumb
  */
 async function sendWelcomeWithServices(userPhone, shopInfo, services) {
     try {
-        // Simple, clean welcome message
-        const welcomeText = ` *Welcome to ${shopInfo.settings.shop_name}!* 
-
-⚡ *Book in seconds, not minutes!*
-
-🚀 *Why WhatsApp booking?*
-📱 *No app needed* - Book directly in chat
-⚡ *Super fast* - Get your slot instantly
-
- Choose your service below:
-
- *Tip:* Reply "menu" anytime to see options again.`;
+        // Professional welcome message
+        const welcomeText = `Welcome to ${shopInfo.settings.shop_name}\n\nBook your appointment quickly and easily through WhatsApp.\n\nBenefits:\n• No app required - Book directly in chat\n• Fast booking process\n• Available 24/7\n\nPlease select your service:\n\nReply "menu" anytime to see options again.`;
 
         // Create service buttons (max 3 buttons for WhatsApp)
         const serviceButtons = services.slice(0, 3).map(service => ({
@@ -786,18 +754,8 @@ async function sendWelcomeWithServices(userPhone, shopInfo, services) {
 
     } catch (error) {
         console.error('Error sending welcome with services:', error);
-        // Simple fallback message
-        const fallbackMessage = ` *Welcome to ${shopInfo.settings.shop_name}!* 
-
-⚡ *Book in seconds, not minutes!*
-
-📱 *No app needed* - Book directly in WhatsApp
-⚡ *Super fast* - Get your slot instantly
- *Available 24/7* - Book anytime, anywhere
-
-📅 *Choose your service below:*
-
- *Tip:* Reply "menu" anytime to see options again.`;
+        // Professional fallback message
+        const fallbackMessage = `Welcome to ${shopInfo.settings.shop_name}\n\nBook your appointment quickly and easily through WhatsApp.\n\nBenefits:\n• No app required - Book directly in chat\n• Fast booking process\n• Available 24/7\n\nPlease reply "services" to see available services and book your appointment.\n\nReply "menu" anytime to see options again.`;
 
         await sendWhatsAppMessage(userPhone, fallbackMessage);
     }
