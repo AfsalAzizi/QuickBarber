@@ -92,6 +92,12 @@ function detectIntent(messageContent, session) {
         general_inquiry: [
             'hello', 'hi', 'hey', 'help', 'information', 'info', 'contact', 'phone', 'address',
             'location', 'hours', 'timing', 'open', 'closed', 'when do you open', 'when do you close'
+        ],
+        select_time_period: [
+            'immediate', 'next', 'evening', 'later', 'today', 'time'
+        ],
+        select_specific_time: [
+            'slot_', 'time_', 'am', 'pm'
         ]
     };
 

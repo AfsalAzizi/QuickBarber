@@ -288,8 +288,14 @@ async function processIntent(intent, messageContent, session, shopInfo) {
                 await handleBarberSelection(messageContent, session, shopInfo);
                 break;
             case 'select_time':
-                // TODO: Implement time selection
-                await sendWhatsAppMessage(session.user_phone, 'Time selection functionality will be implemented in the next phase.');
+                await showTimePeriodOptions(session, shopInfo);
+                break;
+            case 'select_time_period':
+                await handleTimePeriodSelection(messageContent, session, shopInfo);
+                break;
+            case 'select_specific_time':
+                // TODO: Implement specific time slot selection
+                await sendWhatsAppMessage(session.user_phone, 'Specific time selection functionality will be implemented in the next phase.');
                 break;
             default:
                 // Check session phase to determine what to do
@@ -297,6 +303,8 @@ async function processIntent(intent, messageContent, session, shopInfo) {
                     await handleServiceSelection(messageContent, session, shopInfo);
                 } else if (session.phase === 'barber_selection') {
                     await handleBarberSelection(messageContent, session, shopInfo);
+                } else if (session.phase === 'time_selection') {
+                    await handleTimePeriodSelection(messageContent, session, shopInfo);
                 } else {
                     await handleWelcome(session, shopInfo);
                 }
@@ -644,6 +652,453 @@ async function handleBarberSelection(messageContent, session, shopInfo) {
     } catch (error) {
         console.error('Error handling barber selection:', error);
         await sendWhatsAppMessage(session.user_phone, 'Unable to process your barber selection. Please try again.');
+    }
+}
+
+/**
+ * Handle time period selection
+ * @param {String} messageContent - User's message content
+ * @param {Object} session - User session
+ * @param {Object} shopInfo - Shop information
+ */
+async function handleTimePeriodSelection(messageContent, session, shopInfo) {
+    try {
+        console.log('Handling time period selection:', messageContent);
+
+        let selectedTimePeriod = null;
+
+        // Check if it's a button selection
+        if (messageContent.startsWith('time_')) {
+            const timePeriod = messageContent.replace('time_', '');
+            console.log('Button time period selection:', timePeriod);
+            selectedTimePeriod = timePeriod;
+        } else {
+            // Handle text-based selection
+            const message = messageContent.toLowerCase().trim();
+            if (message.includes('immediate') || message.includes('next')) {
+                selectedTimePeriod = 'immediate';
+            } else if (message.includes('evening')) {
+                selectedTimePeriod = 'evening';
+            } else if (message.includes('later') || message.includes('today')) {
+                selectedTimePeriod = 'later_today';
+            }
+        }
+
+        if (!selectedTimePeriod) {
+            console.log('Time period not recognized, showing available options');
+            await showTimePeriodOptions(session, shopInfo);
+            return;
+        }
+
+        // Update session with selected time period
+        console.log('Updating session with time period:', selectedTimePeriod);
+        await updateSession(session, {
+            time_period_key: selectedTimePeriod,
+            phase: 'time_selection',
+            intent: 'select_specific_time',
+            context_data: {
+                ...session.context_data,
+                time_period_selected_at: new Date()
+            }
+        });
+
+        // Get available time slots for the selected period
+        const availableSlots = await getAvailableTimeSlots(session, shopInfo, selectedTimePeriod);
+
+        if (availableSlots.length === 0) {
+            await sendWhatsAppMessage(
+                session.user_phone,
+                `No available slots found for ${getTimePeriodLabel(selectedTimePeriod)}. Please try a different time period.`
+            );
+            await showTimePeriodOptions(session, shopInfo);
+            return;
+        }
+
+        // Show available time slots
+        await showAvailableTimeSlots(session, shopInfo, availableSlots, selectedTimePeriod);
+
+    } catch (error) {
+        console.error('Error handling time period selection:', error);
+        await sendWhatsAppMessage(session.user_phone, 'Unable to process your time selection. Please try again.');
+    }
+}
+
+/**
+ * Show time period selection options based on current time and shop settings
+ * @param {Object} session - User session
+ * @param {Object} shopInfo - Shop information
+ */
+async function showTimePeriodOptions(session, shopInfo) {
+    try {
+        const settings = shopInfo.settings;
+        const currentTime = moment().tz(settings.timezone);
+        const currentHour = currentTime.hour();
+
+        console.log('Current time:', currentTime.format('HH:mm'), 'Current hour:', currentHour);
+
+        // Determine available time periods based on current time
+        const availablePeriods = [];
+
+        // Check if immediate slots are available (next 2 hours)
+        if (await hasImmediateSlots(session, shopInfo)) {
+            availablePeriods.push({
+                id: 'time_immediate',
+                title: 'Immediate (Next 2 hours)'
+            });
+        }
+
+        // Check if evening slots are available (5 PM - 7 PM)
+        if (currentHour < 17 && await hasEveningSlots(session, shopInfo)) {
+            availablePeriods.push({
+                id: 'time_evening',
+                title: 'This Evening (5 PM - 7 PM)'
+            });
+        }
+
+        // Check if later today slots are available (after evening until closing)
+        if (await hasLaterTodaySlots(session, shopInfo)) {
+            availablePeriods.push({
+                id: 'time_later_today',
+                title: 'Later Today (After 7 PM)'
+            });
+        }
+
+        if (availablePeriods.length === 0) {
+            await sendWhatsAppMessage(
+                session.user_phone,
+                'No time slots are available today. Please try again tomorrow or contact us directly.'
+            );
+            return;
+        }
+
+        const timeSelectionText = `Please select your preferred time period:\n\nReply "back" to change your barber selection.`;
+
+        await sendButtonMessage(session.user_phone, timeSelectionText, availablePeriods);
+
+    } catch (error) {
+        console.error('Error showing time period options:', error);
+        await sendWhatsAppMessage(session.user_phone, 'Unable to show time options. Please try again.');
+    }
+}
+
+/**
+ * Check if immediate slots are available (next 2 hours)
+ * @param {Object} session - User session
+ * @param {Object} shopInfo - Shop information
+ * @returns {Boolean}
+ */
+async function hasImmediateSlots(session, shopInfo) {
+    try {
+        const settings = shopInfo.settings;
+        const currentTime = moment().tz(settings.timezone);
+        const endTime = currentTime.clone().add(2, 'hours');
+
+        // Check if we're within business hours
+        if (!isWithinBusinessHours(currentTime, settings)) {
+            return false;
+        }
+
+        // Check for available slots in the next 2 hours
+        const availableSlots = await getAvailableSlotsInTimeRange(
+            session,
+            shopInfo,
+            currentTime,
+            endTime
+        );
+
+        return availableSlots.length > 0;
+    } catch (error) {
+        console.error('Error checking immediate slots:', error);
+        return false;
+    }
+}
+
+/**
+ * Check if evening slots are available (5 PM - 7 PM)
+ * @param {Object} session - User session
+ * @param {Object} shopInfo - Shop information
+ * @returns {Boolean}
+ */
+async function hasEveningSlots(session, shopInfo) {
+    try {
+        const settings = shopInfo.settings;
+        const currentTime = moment().tz(settings.timezone);
+
+        // Evening is 5 PM - 7 PM
+        const eveningStart = currentTime.clone().hour(17).minute(0).second(0);
+        const eveningEnd = currentTime.clone().hour(19).minute(0).second(0);
+
+        // Check if evening time is in the future
+        if (eveningStart.isBefore(currentTime)) {
+            return false;
+        }
+
+        // Check if we're within business hours
+        if (!isWithinBusinessHours(eveningStart, settings)) {
+            return false;
+        }
+
+        // Check for available slots in evening
+        const availableSlots = await getAvailableSlotsInTimeRange(
+            session,
+            shopInfo,
+            eveningStart,
+            eveningEnd
+        );
+
+        return availableSlots.length > 0;
+    } catch (error) {
+        console.error('Error checking evening slots:', error);
+        return false;
+    }
+}
+
+/**
+ * Check if later today slots are available (after 7 PM until closing)
+ * @param {Object} session - User session
+ * @param {Object} shopInfo - Shop information
+ * @returns {Boolean}
+ */
+async function hasLaterTodaySlots(session, shopInfo) {
+    try {
+        const settings = shopInfo.settings;
+        const currentTime = moment().tz(settings.timezone);
+
+        // Later today is after 7 PM until closing
+        const laterStart = currentTime.clone().hour(19).minute(0).second(0);
+        const closingTime = getClosingTime(currentTime, settings);
+
+        // Check if later time is in the future
+        if (laterStart.isBefore(currentTime)) {
+            return false;
+        }
+
+        // Check if we're within business hours
+        if (!isWithinBusinessHours(laterStart, settings)) {
+            return false;
+        }
+
+        // Check for available slots in later today
+        const availableSlots = await getAvailableSlotsInTimeRange(
+            session,
+            shopInfo,
+            laterStart,
+            closingTime
+        );
+
+        return availableSlots.length > 0;
+    } catch (error) {
+        console.error('Error checking later today slots:', error);
+        return false;
+    }
+}
+
+/**
+ * Get available time slots for a specific time period
+ * @param {Object} session - User session
+ * @param {Object} shopInfo - Shop information
+ * @param {String} timePeriod - Time period key
+ * @returns {Array} - Available time slots
+ */
+async function getAvailableTimeSlots(session, shopInfo, timePeriod) {
+    try {
+        const settings = shopInfo.settings;
+        const currentTime = moment().tz(settings.timezone);
+
+        let startTime, endTime;
+
+        switch (timePeriod) {
+            case 'immediate':
+                startTime = currentTime;
+                endTime = currentTime.clone().add(2, 'hours');
+                break;
+            case 'evening':
+                startTime = currentTime.clone().hour(17).minute(0).second(0);
+                endTime = currentTime.clone().hour(19).minute(0).second(0);
+                break;
+            case 'later_today':
+                startTime = currentTime.clone().hour(19).minute(0).second(0);
+                endTime = getClosingTime(currentTime, settings);
+                break;
+            default:
+                return [];
+        }
+
+        return await getAvailableSlotsInTimeRange(session, shopInfo, startTime, endTime);
+    } catch (error) {
+        console.error('Error getting available time slots:', error);
+        return [];
+    }
+}
+
+/**
+ * Get available slots in a specific time range
+ * @param {Object} session - User session
+ * @param {Object} shopInfo - Shop information
+ * @param {Object} startTime - Start time (moment object)
+ * @param {Object} endTime - End time (moment object)
+ * @returns {Array} - Available time slots
+ */
+async function getAvailableSlotsInTimeRange(session, shopInfo, startTime, endTime) {
+    try {
+        const settings = shopInfo.settings;
+        const slotInterval = settings.slot_interval_min || 30;
+        const service = await ServiceCatalog.findOne({ service_key: session.selected_service });
+        const serviceDuration = service ? service.duration_min : 30;
+
+        // Get existing bookings for the selected barber on the same day
+        const existingBookings = await Booking.find({
+            barber_id: session.selected_barber_id,
+            date: startTime.format('YYYY-MM-DD'),
+            status: { $in: ['confirmed', 'pending'] }
+        });
+
+        console.log('Existing bookings for barber:', existingBookings.length);
+
+        const availableSlots = [];
+        const currentSlot = startTime.clone();
+
+        while (currentSlot.isBefore(endTime)) {
+            const slotEnd = currentSlot.clone().add(serviceDuration, 'minutes');
+
+            // Check if slot is within business hours
+            if (isWithinBusinessHours(currentSlot, settings) &&
+                isWithinBusinessHours(slotEnd, settings)) {
+
+                // Check if slot conflicts with existing bookings
+                const hasConflict = existingBookings.some(booking => {
+                    const bookingStart = moment.tz(booking.start_time, settings.timezone);
+                    const bookingEnd = moment.tz(booking.end_time, settings.timezone);
+
+                    return (currentSlot.isBefore(bookingEnd) && slotEnd.isAfter(bookingStart));
+                });
+
+                if (!hasConflict) {
+                    availableSlots.push({
+                        time: currentSlot.format('HH:mm'),
+                        datetime: currentSlot.toISOString(),
+                        display: currentSlot.format('h:mm A')
+                    });
+                }
+            }
+
+            currentSlot.add(slotInterval, 'minutes');
+        }
+
+        return availableSlots;
+    } catch (error) {
+        console.error('Error getting available slots in time range:', error);
+        return [];
+    }
+}
+
+/**
+ * Show available time slots to user
+ * @param {Object} session - User session
+ * @param {Object} shopInfo - Shop information
+ * @param {Array} availableSlots - Available time slots
+ * @param {String} timePeriod - Selected time period
+ */
+async function showAvailableTimeSlots(session, shopInfo, availableSlots, timePeriod) {
+    try {
+        const timePeriodLabel = getTimePeriodLabel(timePeriod);
+
+        if (availableSlots.length === 0) {
+            await sendWhatsAppMessage(
+                session.user_phone,
+                `No available slots found for ${timePeriodLabel}. Please try a different time period.`
+            );
+            await showTimePeriodOptions(session, shopInfo);
+            return;
+        }
+
+        // Create time slot buttons (max 3 buttons for WhatsApp)
+        const timeButtons = availableSlots.slice(0, 3).map((slot, index) => ({
+            id: `slot_${slot.time}`,
+            title: slot.display
+        }));
+
+        // If there are more than 3 slots, add a "More Times" button
+        if (availableSlots.length > 3) {
+            timeButtons.push({
+                id: 'more_times',
+                title: 'More Times'
+            });
+        }
+
+        const timeSelectionText = `Available time slots for ${timePeriodLabel}:\n\nPlease select your preferred time:\n\nReply "back" to change time period.`;
+
+        await sendButtonMessage(session.user_phone, timeSelectionText, timeButtons);
+
+    } catch (error) {
+        console.error('Error showing available time slots:', error);
+        await sendWhatsAppMessage(session.user_phone, 'Unable to show time slots. Please try again.');
+    }
+}
+
+/**
+ * Check if a time is within business hours
+ * @param {Object} time - Time to check (moment object)
+ * @param {Object} settings - Shop settings
+ * @returns {Boolean}
+ */
+function isWithinBusinessHours(time, settings) {
+    const currentHour = time.hour();
+    const currentMinute = time.minute();
+    const currentTimeMinutes = currentHour * 60 + currentMinute;
+
+    const openingTime = parseTime(settings.start_time);
+    const closingTime = parseTime(settings.close_time);
+
+    // Check lunch break
+    if (settings.lunch_start && settings.lunch_end) {
+        const lunchStart = parseTime(settings.lunch_start);
+        const lunchEnd = parseTime(settings.lunch_end);
+
+        if (currentTimeMinutes >= lunchStart && currentTimeMinutes < lunchEnd) {
+            return false;
+        }
+    }
+
+    return currentTimeMinutes >= openingTime && currentTimeMinutes < closingTime;
+}
+
+/**
+ * Get closing time for the day
+ * @param {Object} currentTime - Current time (moment object)
+ * @param {Object} settings - Shop settings
+ * @returns {Object} - Closing time (moment object)
+ */
+function getClosingTime(currentTime, settings) {
+    const closingTime = parseTime(settings.close_time);
+    return currentTime.clone().hour(Math.floor(closingTime / 60)).minute(closingTime % 60).second(0);
+}
+
+/**
+ * Parse time string (HH:mm) to minutes
+ * @param {String} timeString - Time string in HH:mm format
+ * @returns {Number} - Time in minutes
+ */
+function parseTime(timeString) {
+    const [hours, minutes] = timeString.split(':').map(Number);
+    return hours * 60 + minutes;
+}
+
+/**
+ * Get time period label
+ * @param {String} timePeriod - Time period key
+ * @returns {String} - Time period label
+ */
+function getTimePeriodLabel(timePeriod) {
+    switch (timePeriod) {
+        case 'immediate':
+            return 'Immediate (Next 2 hours)';
+        case 'evening':
+            return 'This Evening (5 PM - 7 PM)';
+        case 'later_today':
+            return 'Later Today (After 7 PM)';
+        default:
+            return 'Selected Time Period';
     }
 }
 
