@@ -56,9 +56,9 @@ const wabaNumberSchema = new mongoose.Schema({
     timestamps: true
 });
 
-// Index for efficient queries
-wabaNumberSchema.index({ phone_number_id: 1 });
-wabaNumberSchema.index({ shop_id: 1 });
-wabaNumberSchema.index({ display_phone_number: 1 });
+// Create indexes with error handling
+wabaNumberSchema.index({ phone_number_id: 1 }, { background: true });
+wabaNumberSchema.index({ shop_id: 1 }, { background: true });
+wabaNumberSchema.index({ display_phone_number: 1 }, { background: true });
 
 module.exports = mongoose.model('WabaNumber', wabaNumberSchema, 'wabanumbers');
