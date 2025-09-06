@@ -119,19 +119,36 @@ function extractMessageContent(message) {
  */
 async function getShopFromPhoneNumber(phoneNumberId) {
     try {
+        console.log('Searching for WABA number with phone_number_id:', phoneNumberId, 'type:', typeof phoneNumberId);
+
         const wabaNumber = await WabaNumber.findOne({ phone_number_id: phoneNumberId });
+        console.log('WABA number query result:', wabaNumber);
+
         if (!wabaNumber) {
+            console.log('No WABA number found for phone_number_id:', phoneNumberId);
             return null;
         }
 
+        console.log('Found WABA number, getting settings for shop_id:', wabaNumber.shop_id);
         const settings = await Settings.findOne({ shop_id: wabaNumber.shop_id });
-        return {
+        console.log('Settings query result:', settings);
+
+        if (!settings) {
+            console.log('No settings found for shop_id:', wabaNumber.shop_id);
+            return null;
+        }
+
+        const result = {
             shop_id: wabaNumber.shop_id,
             phone_number_id: phoneNumberId,
             display_phone_number: wabaNumber.display_phone_number,
             timezone: wabaNumber.timezone,
             settings
         };
+
+        console.log('Returning shop info:', result);
+        return result;
+
     } catch (error) {
         console.error('Error getting shop from phone number:', error);
         return null;
