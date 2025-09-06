@@ -97,7 +97,7 @@ function verifyWebhookSignature(payload, signature) {
 async function processWebhookData(body) {
     try {
         console.log('Full webhook payload:', JSON.stringify(body, null, 2));
-        
+
         // Handle different types of webhook events
         if (body.object === 'whatsapp_business_account') {
             for (const entry of body.entry) {
@@ -121,7 +121,7 @@ async function processMessages(value) {
         // Only process actual messages, ignore status updates
         if (value.messages && value.messages.length > 0) {
             console.log('Processing', value.messages.length, 'incoming message(s)');
-            
+
             for (const message of value.messages) {
                 console.log('Processing message:', {
                     id: message.id,
@@ -154,7 +154,7 @@ async function processMessages(value) {
             }
         } else if (value.statuses && value.statuses.length > 0) {
             // Log status updates but don't process them
-            console.log('Ignoring', value.statuses.length, 'status update(s):', 
+            console.log('Ignoring', value.statuses.length, 'status update(s):',
                 value.statuses.map(s => `${s.id}: ${s.status}`).join(', '));
         } else {
             console.log('No messages or statuses to process in webhook payload');

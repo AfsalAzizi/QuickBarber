@@ -44,21 +44,31 @@ async function processIncomingMessage(message, metadata) {
 
         // Check if this is a first message (no existing session or new conversation)
         console.log('Checking if first message for user:', message.from, 'shop:', shopInfo.shop_id);
-        const isFirstMessage = await isFirstMessageFromUser(message.from, shopInfo.shop_id);
-        console.log('Is first message:', isFirstMessage);
+        try {
+            const isFirstMessage = await isFirstMessageFromUser(message.from, shopInfo.shop_id);
+            console.log('Is first message:', isFirstMessage);
 
-        if (isFirstMessage) {
-            console.log('Handling first message...');
-            // Handle first message with welcome flow
-            await handleFirstMessage(message.from, messageContent, shopInfo, metadata.phone_number_id);
-            console.log('First message handled successfully');
-            return;
+            if (isFirstMessage) {
+                console.log('Handling first message...');
+                // Handle first message with welcome flow
+                await handleFirstMessage(message.from, messageContent, shopInfo, metadata.phone_number_id);
+                console.log('First message handled successfully');
+                return;
+            }
+        } catch (error) {
+            console.error('Error in first message check/handling:', error);
+            throw error;
         }
 
         // Load existing session
         console.log('Loading existing session...');
-        const session = await loadOrCreateSession(message.from, shopInfo.shop_id, metadata.phone_number_id);
-        console.log('Session loaded:', session);
+        try {
+            const session = await loadOrCreateSession(message.from, shopInfo.shop_id, metadata.phone_number_id);
+            console.log('Session loaded:', session);
+        } catch (error) {
+            console.error('Error loading session:', error);
+            throw error;
+        }
 
         // Detect user intent
         console.log('Detecting intent...');
