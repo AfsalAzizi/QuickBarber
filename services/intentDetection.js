@@ -61,6 +61,21 @@ function detectIntent(messageContent, session) {
         }
     }
 
+    // Check for button clicks (service selection)
+    if (message.startsWith('service_')) {
+        return 'select_service';
+    }
+
+    // Check for button clicks (barber selection)  
+    if (message.startsWith('barber_')) {
+        return 'select_barber';
+    }
+
+    // Check for "more services" button
+    if (message === 'more_services') {
+        return 'list_services';
+    }
+
     // Check for number patterns (for service/barber selection)
     if (/^\d+$/.test(message)) {
         const number = parseInt(message);
