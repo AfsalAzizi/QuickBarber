@@ -11,97 +11,6 @@ const mongoose = require('mongoose');
 const { ensureConnection } = require('../utils/dbConnection');
 
 /**
- * Process incoming WhatsApp message
- * @param {Object} message - WhatsApp message object
- * @param {Object} metadata - Message metadata
- */
-async function processIncomingMessage(message, metadata) {
-    try {
-        console.log('Processing incoming message:', {
-            id: message.id,
-            from: message.from,
-            type: message.type,
-            timestamp: message.timestamp
-        });
-
-        // Extract message content based on type
-        console.log('Extracting message content...');
-        const messageContent = extractMessageContent(message);
-        console.log('Message content:', messageContent);
-
-        if (!messageContent) {
-            console.log('No text content found in message');
-            return;
-        }
-
-        // Get shop information from phone number
-        console.log('Getting shop info for phone number:', metadata.phone_number_id);
-        const shopInfo = await getShopFromPhoneNumber(metadata.phone_number_id);
-        console.log('Shop info result:', shopInfo);
-
-        if (!shopInfo) {
-            console.log('No shop found for phone number:', metadata.phone_number_id);
-            return;
-        }
-
-        // Check if this is a first message (no existing session or new conversation)
-        console.log('Checking if first message for user:', message.from, 'shop:', shopInfo.shop_id);
-        try {
-            const isFirstMessage = await isFirstMessageFromUser(message.from, shopInfo.shop_id);
-            console.log('Is first message:', isFirstMessage);
-
-            if (isFirstMessage) {
-                console.log('Handling first message...');
-                // Handle first message with welcome flow
-                await handleFirstMessage(message.from, messageContent, shopInfo, metadata.phone_number_id);
-                console.log('First message handled successfully');
-                return;
-            }
-        } catch (error) {
-            console.error('Error in first message check/handling:', error);
-            throw error;
-        }
-
-        // Load existing session
-        console.log('Loading existing session...');
-        try {
-            const session = await loadOrCreateSession(message.from, shopInfo.shop_id, metadata.phone_number_id);
-            console.log('Session loaded:', session);
-        } catch (error) {
-            console.error('Error loading session:', error);
-            throw error;
-        }
-
-        // Detect user intent
-        console.log('Detecting intent...');
-        const intent = await detectIntent(messageContent, session);
-        console.log('Detected intent:', intent);
-
-        // Update session with new intent and message
-        console.log('Updating session...');
-        await updateSession(session, {
-            intent,
-            last_activity: new Date(),
-            context_data: {
-                ...session.context_data,
-                last_message: messageContent,
-                last_message_id: message.id
-            }
-        });
-
-        // Process based on intent
-        console.log('Processing intent:', intent);
-        await processIntent(intent, messageContent, session, shopInfo);
-        console.log('Intent processed successfully');
-
-    } catch (error) {
-        console.error('Error processing incoming message:', error);
-        // Send error message to user
-        await sendWhatsAppMessage(message.from, 'Sorry, I encountered an error. Please try again later.');
-    }
-}
-
-/**
  * Extract message content based on message type
  * @param {Object} message - WhatsApp message object
  * @returns {String} - Extracted message content
@@ -196,6 +105,8 @@ async function getShopFromPhoneNumber(phoneNumberId) {
  */
 async function loadOrCreateSession(userPhone, shopId, phoneNumberId) {
     try {
+        console.log('Loading session for user:', userPhone, 'shop:', shopId);
+
         // Try to find existing active session
         let session = await Session.findOne({
             user_phone: userPhone,
@@ -203,20 +114,33 @@ async function loadOrCreateSession(userPhone, shopId, phoneNumberId) {
             is_active: true
         });
 
-        if (!session) {
-            // Create new session
-            session = new Session({
-                user_phone: userPhone,
-                shop_id: shopId,
-                phone_number_id: phoneNumberId,
-                phase: 'welcome',
-                is_active: true,
-                context_data: {}
-            });
+        if (session) {
+            console.log('Found existing session:', session._id);
+            // Update last activity
+            session.last_activity = new Date();
+            session.updated_at_iso = new Date();
             await session.save();
+            return session;
         }
 
+        // If no session found, create a new one
+        console.log('No existing session found, creating new session...');
+        session = new Session({
+            user_phone: userPhone,
+            shop_id: shopId,
+            phone_number_id: phoneNumberId,
+            phase: 'welcome',
+            intent: 'general_inquiry',
+            is_active: true,
+            context_data: {
+                session_created: new Date()
+            }
+        });
+
+        await session.save();
+        console.log('New session created:', session._id);
         return session;
+
     } catch (error) {
         console.error('Error loading/creating session:', error);
         throw error;
@@ -488,23 +412,36 @@ async function handleServiceSelection(messageContent, session, shopInfo) {
 }
 
 /**
- * Check if this is the first message from a user
+ * Check if this is a first message from user (no existing session)
  * @param {String} userPhone - User's phone number
  * @param {String} shopId - Shop ID
- * @returns {Boolean} - True if this is a first message
+ * @returns {Boolean} - True if first message, false if ongoing session
  */
 async function isFirstMessageFromUser(userPhone, shopId) {
     try {
-        // Check if there's any existing session for this user and shop
+        console.log('Checking for existing session for user:', userPhone, 'shop:', shopId);
+
+        // Check if there's an existing active session
         const existingSession = await Session.findOne({
             user_phone: userPhone,
-            shop_id: shopId
+            shop_id: shopId,
+            is_active: true
         });
 
-        return !existingSession;
+        console.log('Existing session found:', !!existingSession);
+
+        if (existingSession) {
+            console.log('Session exists, this is NOT a first message');
+            return false;
+        } else {
+            console.log('No session found, this IS a first message');
+            return true;
+        }
+
     } catch (error) {
-        console.error('Error checking first message:', error);
-        return true; // Default to first message if error
+        console.error('Error checking for existing session:', error);
+        // Default to first message if error
+        return true;
     }
 }
 
@@ -557,8 +494,18 @@ async function handleFirstMessage(userPhone, messageContent, shopInfo, phoneNumb
  */
 async function sendWelcomeWithServices(userPhone, shopInfo, services) {
     try {
-        // Welcome message text
-        const welcomeText = `Book in minutes—choose a service below. Reply **menu** anytime to see options again.`;
+        // Simple, clean welcome message
+        const welcomeText = ` *Welcome to ${shopInfo.settings.shop_name}!* 
+
+⚡ *Book in seconds, not minutes!*
+
+🚀 *Why WhatsApp booking?*
+• 📱 *No app needed* - Book directly in chat
+• ⚡ *Super fast* - Get your slot instantly
+
+ Choose your service below:
+
+ *Tip:* Reply "menu" anytime to see options again.`;
 
         // Create service buttons (max 3 buttons for WhatsApp)
         const serviceButtons = services.slice(0, 3).map(service => ({
@@ -581,8 +528,19 @@ async function sendWelcomeWithServices(userPhone, shopInfo, services) {
 
     } catch (error) {
         console.error('Error sending welcome with services:', error);
-        // Fallback to simple text message
-        const fallbackMessage = `Welcome to ${shopInfo.settings.shop_name}! 💈\n\nI can help you book an appointment. Please reply with "services" to see our available services.`;
+        // Simple fallback message
+        const fallbackMessage = ` *Welcome to ${shopInfo.settings.shop_name}!* 
+
+⚡ *Book in seconds, not minutes!*
+
+📱 *No app needed* - Book directly in WhatsApp
+⚡ *Super fast* - Get your slot instantly
+ *Available 24/7* - Book anytime, anywhere
+
+📅 *Choose your service below:*
+
+ *Tip:* Reply "menu" anytime to see options again.`;
+
         await sendWhatsAppMessage(userPhone, fallbackMessage);
     }
 }
