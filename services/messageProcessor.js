@@ -11,6 +11,87 @@ const mongoose = require('mongoose');
 const { ensureConnection } = require('../utils/dbConnection');
 
 /**
+ * Process incoming WhatsApp message
+ * @param {Object} message - WhatsApp message object
+ * @param {Object} metadata - Message metadata
+ */
+async function processIncomingMessage(message, metadata) {
+    try {
+        console.log('Processing incoming message:', {
+            id: message.id,
+            from: message.from,
+            type: message.type,
+            timestamp: message.timestamp
+        });
+
+        // Extract message content based on type
+        console.log('Extracting message content...');
+        const messageContent = extractMessageContent(message);
+        console.log('Message content:', messageContent);
+
+        if (!messageContent) {
+            console.log('No text content found in message');
+            return;
+        }
+
+        // Get shop information from phone number
+        console.log('Getting shop info for phone number:', metadata.phone_number_id);
+        const shopInfo = await getShopFromPhoneNumber(metadata.phone_number_id);
+        console.log('Shop info result:', shopInfo);
+
+        if (!shopInfo) {
+            console.log('No shop found for phone number:', metadata.phone_number_id);
+            return;
+        }
+
+        // Check if this is a first message (no existing session)
+        console.log('Checking if first message for user:', message.from, 'shop:', shopInfo.shop_id);
+        const isFirstMessage = await isFirstMessageFromUser(message.from, shopInfo.shop_id);
+        console.log('Is first message:', isFirstMessage);
+
+        if (isFirstMessage) {
+            console.log('Handling first message...');
+            // Handle first message with welcome flow
+            await handleFirstMessage(message.from, messageContent, shopInfo, metadata.phone_number_id);
+            console.log('First message handled successfully');
+            return;
+        }
+
+        // Load existing session
+        console.log('Loading existing session...');
+        const session = await loadOrCreateSession(message.from, shopInfo.shop_id, metadata.phone_number_id);
+        console.log('Session loaded:', session);
+
+        // Detect user intent
+        console.log('Detecting intent...');
+        const intent = await detectIntent(messageContent, session);
+        console.log('Detected intent:', intent);
+
+        // Update session with new intent and message
+        console.log('Updating session...');
+        await updateSession(session, {
+            intent,
+            last_activity: new Date(),
+            context_data: {
+                ...session.context_data,
+                last_message: messageContent,
+                last_message_id: message.id
+            }
+        });
+
+        // Process based on intent
+        console.log('Processing intent:', intent);
+        await processIntent(intent, messageContent, session, shopInfo);
+        console.log('Intent processed successfully');
+
+    } catch (error) {
+        console.error('Error processing incoming message:', error);
+        // Send error message to user
+        await sendWhatsAppMessage(message.from, 'Sorry, I encountered an error. Please try again later.');
+    }
+}
+
+/**
  * Extract message content based on message type
  * @param {Object} message - WhatsApp message object
  * @returns {String} - Extracted message content
