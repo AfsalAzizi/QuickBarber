@@ -18,23 +18,39 @@ app.use(morgan('combined'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// MongoDB Connection
+// MongoDB Connection with better error handling
 mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/quickbarber', {
-    serverSelectionTimeoutMS: 5000,
-    socketTimeoutMS: 45000,
-    maxPoolSize: 10,
-    serverSelectionRetryDelayMS: 5000,
-    bufferMaxEntries: 0
+    serverSelectionTimeoutMS: 5000, // Keep trying to send operations for 5 seconds
+    socketTimeoutMS: 45000, // Close sockets after 45 seconds of inactivity
+    maxPoolSize: 10, // Maintain up to 10 socket connections
+    serverSelectionRetryDelayMS: 5000, // Retry every 5 seconds
+    bufferMaxEntries: 0, // Disable mongoose buffering
+    bufferCommands: false, // Disable mongoose buffering
+    maxIdleTimeMS: 10000, // Close connections after 10 seconds of inactivity
 })
     .then(() => {
         console.log('Connected to MongoDB');
     })
     .catch((error) => {
         console.error('MongoDB connection error:', error);
+        // Don't exit process in production, let Vercel handle it
         if (process.env.NODE_ENV !== 'production') {
             process.exit(1);
         }
     });
+
+// Handle connection events
+mongoose.connection.on('connected', () => {
+    console.log('Mongoose connected to MongoDB');
+});
+
+mongoose.connection.on('error', (err) => {
+    console.error('Mongoose connection error:', err);
+});
+
+mongoose.connection.on('disconnected', () => {
+    console.log('Mongoose disconnected');
+});
 
 // Routes
 app.use('/api/webhook', require('./routes/webhook'));
