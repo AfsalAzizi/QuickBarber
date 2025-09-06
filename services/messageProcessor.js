@@ -98,10 +98,10 @@ async function getShopFromPhoneNumber(phoneNumberId) {
         console.log('Searching for WABA number with phone_number_id:', phoneNumberId);
 
         const wabaNumber = await WabaNumber.findOne({ phone_number_id: phoneNumberId })
-            .maxTimeMS(3000)
+            .maxTimeMS(5000) // Increased timeout
             .lean();
 
-        console.log('WABA number query result:', wabaNumber);
+        console.log('WABA number query completed, result:', wabaNumber);
 
         if (!wabaNumber) {
             console.log('No WABA number found for phone_number_id:', phoneNumberId);
@@ -111,10 +111,10 @@ async function getShopFromPhoneNumber(phoneNumberId) {
         console.log('Found WABA number, getting settings for shop_id:', wabaNumber.shop_id);
 
         const settings = await Settings.findOne({ shop_id: wabaNumber.shop_id })
-            .maxTimeMS(3000)
+            .maxTimeMS(5000) // Increased timeout
             .lean();
 
-        console.log('Settings query result:', settings);
+        console.log('Settings query completed, result:', settings);
 
         if (!settings) {
             console.log('No settings found for shop_id:', wabaNumber.shop_id);
@@ -134,6 +134,7 @@ async function getShopFromPhoneNumber(phoneNumberId) {
 
     } catch (error) {
         console.error('Error getting shop from phone number:', error);
+        console.error('Error details:', error.message);
         return null;
     }
 }

@@ -30,7 +30,9 @@ router.post('/', async (req, res) => {
         console.log('Received webhook payload:', JSON.stringify(req.body, null, 2));
 
         // Ensure database connection
+        console.log('Ensuring database connection...');
         await connectToDatabase();
+        console.log('Database connection confirmed');
 
         res.status(200).json({ status: 'received' });
         await processWebhookData(req.body);
@@ -60,8 +62,8 @@ async function processMessages(value) {
     try {
         console.log('Processing messages for phone number:', value.metadata.phone_number_id);
 
-        // Ensure database connection
-        await connectToDatabase();
+        // Remove this line - database connection should already be established
+        // await connectToDatabase();
 
         if (value.messages) {
             for (const message of value.messages) {
