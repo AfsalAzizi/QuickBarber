@@ -131,17 +131,20 @@ async function getShopFromPhoneNumber(phoneNumberId) {
     try {
         console.log('Searching for WABA number with phone_number_id:', phoneNumberId, 'type:', typeof phoneNumberId);
 
-        // Add timeout and error handling for WABA number query
-        const wabaNumber = await WabaNumber.findOne({ phone_number_id: phoneNumberId })
+        // Add connection state check
+        console.log('Mongoose connection state before query:', mongoose.connection.readyState);
+        console.log('Connection states: 0=disconnected, 1=connected, 2=connecting, 3=disconnecting');
+
+
+        // Add a timeout wrapper around the entire query
+        const queryPromise = WabaNumber.findOne({ phone_number_id: phoneNumberId })
             .maxTimeMS(10000) // 10 second timeout
             .lean(); // Use lean() for better performance
 
+        console.log('Starting WABA number query...');
+        const wabaNumber = await queryPromise;
+        console.log('WABA number query completed successfully');
         console.log('WABA number query result:', wabaNumber);
-
-        if (!wabaNumber) {
-            console.log('No WABA number found for phone_number_id:', phoneNumberId);
-            return null;
-        }
 
         console.log('Found WABA number, getting settings for shop_id:', wabaNumber.shop_id);
 
