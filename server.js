@@ -18,7 +18,7 @@ app.use(morgan('combined'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Connect to database
+// Connect to database with better error handling
 async function connectToDatabase() {
     try {
         if (mongoose.connection.readyState === 1) {
@@ -27,16 +27,43 @@ async function connectToDatabase() {
         }
 
         console.log('Connecting to MongoDB...');
+        console.log('MongoDB URI exists:', !!process.env.MONGODB_URI);
+
+        if (!process.env.MONGODB_URI) {
+            throw new Error('MONGODB_URI environment variable is not set');
+        }
+
         await mongoose.connect(process.env.MONGODB_URI, {
-            serverSelectionTimeoutMS: 5000,
+            serverSelectionTimeoutMS: 10000, // 10 seconds
             socketTimeoutMS: 45000,
-            maxPoolSize: 10,
-            bufferCommands: true,
+            maxPoolSize: 1, // Reduced for serverless
+            bufferCommands: false, // Disable buffering
             maxIdleTimeMS: 10000,
         });
+
         console.log('MongoDB connected successfully');
+
+        // Add connection event listeners
+        mongoose.connection.on('connected', () => {
+            console.log('Mongoose connected to MongoDB');
+        });
+
+        mongoose.connection.on('error', (err) => {
+            console.error('MongoDB connection error:', err);
+        });
+
+        mongoose.connection.on('disconnected', () => {
+            console.log('Mongoose disconnected from MongoDB');
+        });
+
     } catch (error) {
         console.error('MongoDB connection failed:', error);
+        console.error('Error details:', {
+            message: error.message,
+            name: error.name,
+            code: error.code
+        });
+
         if (process.env.NODE_ENV !== 'production') {
             process.exit(1);
         }

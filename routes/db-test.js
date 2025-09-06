@@ -179,4 +179,24 @@ router.get('/models', async (req, res) => {
     }
 });
 
+// Add this new route to test environment variables
+router.get('/env', (req, res) => {
+    try {
+        const mongoUri = process.env.MONGODB_URI;
+        
+        res.status(200).json({
+            timestamp: new Date().toISOString(),
+            hasMongoUri: !!mongoUri,
+            mongoUriLength: mongoUri ? mongoUri.length : 0,
+            mongoUriPrefix: mongoUri ? mongoUri.substring(0, 20) + '...' : 'NOT_SET',
+            nodeEnv: process.env.NODE_ENV,
+            environment: 'production'
+        });
+    } catch (error) {
+        res.status(500).json({
+            error: error.message
+        });
+    }
+});
+
 module.exports = router;
