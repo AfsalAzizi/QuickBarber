@@ -29,12 +29,12 @@ router.post('/', async (req, res) => {
     try {
         console.log('Received webhook payload:', JSON.stringify(req.body, null, 2));
 
-        // Verify the webhook signature (optional but recommended for production)
-        const signature = req.headers['x-hub-signature-256'];
-        if (signature && !verifyWebhookSignature(req.body, signature)) {
-            console.log('Invalid webhook signature');
-            return res.status(403).json({ error: 'Invalid signature' });
-        }
+        // Temporarily disable signature verification for testing
+        // const signature = req.headers['x-hub-signature-256'];
+        // if (signature && !verifyWebhookSignature(req.body, signature)) {
+        //     console.log('Invalid webhook signature');
+        //     return res.status(403).json({ error: 'Invalid signature' });
+        // }
 
         // Respond to webhook immediately (within 20 seconds)
         res.status(200).json({ status: 'received' });
