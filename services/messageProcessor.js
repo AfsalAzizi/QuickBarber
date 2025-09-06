@@ -23,35 +23,50 @@ async function processIncomingMessage(message, metadata) {
         });
 
         // Extract message content based on type
+        console.log('Extracting message content...');
         const messageContent = extractMessageContent(message);
+        console.log('Message content:', messageContent);
+
         if (!messageContent) {
             console.log('No text content found in message');
             return;
         }
 
         // Get shop information from phone number
+        console.log('Getting shop info for phone number:', metadata.phone_number_id);
         const shopInfo = await getShopFromPhoneNumber(metadata.phone_number_id);
+        console.log('Shop info result:', shopInfo);
+
         if (!shopInfo) {
             console.log('No shop found for phone number:', metadata.phone_number_id);
             return;
         }
 
         // Check if this is a first message (no existing session or new conversation)
+        console.log('Checking if first message for user:', message.from, 'shop:', shopInfo.shop_id);
         const isFirstMessage = await isFirstMessageFromUser(message.from, shopInfo.shop_id);
+        console.log('Is first message:', isFirstMessage);
 
         if (isFirstMessage) {
+            console.log('Handling first message...');
             // Handle first message with welcome flow
             await handleFirstMessage(message.from, messageContent, shopInfo, metadata.phone_number_id);
+            console.log('First message handled successfully');
             return;
         }
 
         // Load existing session
+        console.log('Loading existing session...');
         const session = await loadOrCreateSession(message.from, shopInfo.shop_id, metadata.phone_number_id);
+        console.log('Session loaded:', session);
 
         // Detect user intent
+        console.log('Detecting intent...');
         const intent = await detectIntent(messageContent, session);
+        console.log('Detected intent:', intent);
 
         // Update session with new intent and message
+        console.log('Updating session...');
         await updateSession(session, {
             intent,
             last_activity: new Date(),
@@ -63,7 +78,9 @@ async function processIncomingMessage(message, metadata) {
         });
 
         // Process based on intent
+        console.log('Processing intent:', intent);
         await processIntent(intent, messageContent, session, shopInfo);
+        console.log('Intent processed successfully');
 
     } catch (error) {
         console.error('Error processing incoming message:', error);
