@@ -1,4 +1,3 @@
-const Session = require('../models/Session');
 const WabaNumber = require('../models/WabaNumber');
 const Settings = require('../models/Settings');
 const ServiceCatalog = require('../models/ServiceCatalog');
@@ -731,7 +730,19 @@ async function handleTimePeriodSelection(messageContent, session, shopInfo) {
  */
 async function showTimePeriodOptions(session, shopInfo) {
     try {
+        console.log('showTimePeriodOptions called with shopInfo:', JSON.stringify(shopInfo, null, 2));
+
         const settings = shopInfo.settings;
+        console.log('Settings object:', JSON.stringify(settings, null, 2));
+
+        if (!settings) {
+            throw new Error('Settings not found in shopInfo');
+        }
+
+        if (!settings.timezone) {
+            throw new Error('Timezone not found in settings');
+        }
+
         const currentTime = moment().tz(settings.timezone);
         const currentHour = currentTime.hour();
 
@@ -741,7 +752,9 @@ async function showTimePeriodOptions(session, shopInfo) {
         const availablePeriods = [];
 
         // Check if immediate slots are available (next 2 hours)
+        console.log('Checking immediate slots...');
         if (await hasImmediateSlots(session, shopInfo)) {
+            console.log('Immediate slots available');
             availablePeriods.push({
                 id: 'time_immediate',
                 title: 'Immediate (Next 2 hours)'
@@ -749,7 +762,9 @@ async function showTimePeriodOptions(session, shopInfo) {
         }
 
         // Check if evening slots are available (5 PM - 7 PM)
+        console.log('Checking evening slots...');
         if (currentHour < 17 && await hasEveningSlots(session, shopInfo)) {
+            console.log('Evening slots available');
             availablePeriods.push({
                 id: 'time_evening',
                 title: 'This Evening (5 PM - 7 PM)'
@@ -757,12 +772,16 @@ async function showTimePeriodOptions(session, shopInfo) {
         }
 
         // Check if later today slots are available (after evening until closing)
+        console.log('Checking later today slots...');
         if (await hasLaterTodaySlots(session, shopInfo)) {
+            console.log('Later today slots available');
             availablePeriods.push({
                 id: 'time_later_today',
                 title: 'Later Today (After 7 PM)'
             });
         }
+
+        console.log('Available periods:', availablePeriods);
 
         if (availablePeriods.length === 0) {
             await sendWhatsAppMessage(
@@ -774,10 +793,12 @@ async function showTimePeriodOptions(session, shopInfo) {
 
         const timeSelectionText = `Please select your preferred time period:\n\nReply "back" to change your barber selection.`;
 
+        console.log('Sending button message with periods:', availablePeriods);
         await sendButtonMessage(session.user_phone, timeSelectionText, availablePeriods);
 
     } catch (error) {
         console.error('Error showing time period options:', error);
+        console.error('Error stack:', error.stack);
         await sendWhatsAppMessage(session.user_phone, 'Unable to show time options. Please try again.');
     }
 }
@@ -790,16 +811,26 @@ async function showTimePeriodOptions(session, shopInfo) {
  */
 async function hasImmediateSlots(session, shopInfo) {
     try {
+        console.log('hasImmediateSlots called');
         const settings = shopInfo.settings;
         const currentTime = moment().tz(settings.timezone);
         const endTime = currentTime.clone().add(2, 'hours');
 
+        console.log('Current time:', currentTime.format('HH:mm'));
+        console.log('End time (2 hours later):', endTime.format('HH:mm'));
+
         // Check if we're within business hours
-        if (!isWithinBusinessHours(currentTime, settings)) {
+        console.log('Checking if within business hours...');
+        const withinBusinessHours = isWithinBusinessHours(currentTime, settings);
+        console.log('Within business hours:', withinBusinessHours);
+
+        if (!withinBusinessHours) {
+            console.log('Not within business hours, returning false');
             return false;
         }
 
         // Check for available slots in the next 2 hours
+        console.log('Getting available slots in time range...');
         const availableSlots = await getAvailableSlotsInTimeRange(
             session,
             shopInfo,
@@ -807,9 +838,11 @@ async function hasImmediateSlots(session, shopInfo) {
             endTime
         );
 
+        console.log('Available slots found:', availableSlots.length);
         return availableSlots.length > 0;
     } catch (error) {
         console.error('Error checking immediate slots:', error);
+        console.error('Error stack:', error.stack);
         return false;
     }
 }
@@ -942,12 +975,20 @@ async function getAvailableTimeSlots(session, shopInfo, timePeriod) {
  */
 async function getAvailableSlotsInTimeRange(session, shopInfo, startTime, endTime) {
     try {
+        console.log('getAvailableSlotsInTimeRange called');
+        console.log('Start time:', startTime.format('HH:mm'));
+        console.log('End time:', endTime.format('HH:mm'));
+
         const settings = shopInfo.settings;
         const slotInterval = settings.slot_interval_min || 30;
+
+        console.log('Getting service details...');
         const service = await ServiceCatalog.findOne({ service_key: session.selected_service });
         const serviceDuration = service ? service.duration_min : 30;
+        console.log('Service duration:', serviceDuration, 'minutes');
 
         // Get existing bookings for the selected barber on the same day
+        console.log('Getting existing bookings for barber:', session.selected_barber_id);
         const existingBookings = await Booking.find({
             barber_id: session.selected_barber_id,
             date: startTime.format('YYYY-MM-DD'),
@@ -959,19 +1000,26 @@ async function getAvailableSlotsInTimeRange(session, shopInfo, startTime, endTim
         const availableSlots = [];
         const currentSlot = startTime.clone();
 
+        console.log('Generating slots...');
         while (currentSlot.isBefore(endTime)) {
             const slotEnd = currentSlot.clone().add(serviceDuration, 'minutes');
 
             // Check if slot is within business hours
-            if (isWithinBusinessHours(currentSlot, settings) &&
-                isWithinBusinessHours(slotEnd, settings)) {
+            const withinBusinessHours = isWithinBusinessHours(currentSlot, settings) &&
+                isWithinBusinessHours(slotEnd, settings);
 
+            if (withinBusinessHours) {
                 // Check if slot conflicts with existing bookings
                 const hasConflict = existingBookings.some(booking => {
-                    const bookingStart = moment.tz(booking.start_time, settings.timezone);
-                    const bookingEnd = moment.tz(booking.end_time, settings.timezone);
+                    try {
+                        const bookingStart = moment.tz(booking.start_time, settings.timezone);
+                        const bookingEnd = moment.tz(booking.end_time, settings.timezone);
 
-                    return (currentSlot.isBefore(bookingEnd) && slotEnd.isAfter(bookingStart));
+                        return (currentSlot.isBefore(bookingEnd) && slotEnd.isAfter(bookingStart));
+                    } catch (error) {
+                        console.error('Error processing booking:', booking, error);
+                        return false;
+                    }
                 });
 
                 if (!hasConflict) {
@@ -986,54 +1034,12 @@ async function getAvailableSlotsInTimeRange(session, shopInfo, startTime, endTim
             currentSlot.add(slotInterval, 'minutes');
         }
 
+        console.log('Generated', availableSlots.length, 'available slots');
         return availableSlots;
     } catch (error) {
         console.error('Error getting available slots in time range:', error);
+        console.error('Error stack:', error.stack);
         return [];
-    }
-}
-
-/**
- * Show available time slots to user
- * @param {Object} session - User session
- * @param {Object} shopInfo - Shop information
- * @param {Array} availableSlots - Available time slots
- * @param {String} timePeriod - Selected time period
- */
-async function showAvailableTimeSlots(session, shopInfo, availableSlots, timePeriod) {
-    try {
-        const timePeriodLabel = getTimePeriodLabel(timePeriod);
-
-        if (availableSlots.length === 0) {
-            await sendWhatsAppMessage(
-                session.user_phone,
-                `No available slots found for ${timePeriodLabel}. Please try a different time period.`
-            );
-            await showTimePeriodOptions(session, shopInfo);
-            return;
-        }
-
-        // Create time slot buttons (max 3 buttons for WhatsApp)
-        const timeButtons = availableSlots.slice(0, 3).map((slot, index) => ({
-            id: `slot_${slot.time}`,
-            title: slot.display
-        }));
-
-        // If there are more than 3 slots, add a "More Times" button
-        if (availableSlots.length > 3) {
-            timeButtons.push({
-                id: 'more_times',
-                title: 'More Times'
-            });
-        }
-
-        const timeSelectionText = `Available time slots for ${timePeriodLabel}:\n\nPlease select your preferred time:\n\nReply "back" to change time period.`;
-
-        await sendButtonMessage(session.user_phone, timeSelectionText, timeButtons);
-
-    } catch (error) {
-        console.error('Error showing available time slots:', error);
-        await sendWhatsAppMessage(session.user_phone, 'Unable to show time slots. Please try again.');
     }
 }
 
@@ -1051,8 +1057,9 @@ function isWithinBusinessHours(time, settings) {
     const openingTime = parseTime(settings.start_time);
     const closingTime = parseTime(settings.close_time);
 
-    // Check lunch break
-    if (settings.lunch_start && settings.lunch_end) {
+    // Check lunch break (only if lunch times are provided and not empty)
+    if (settings.lunch_start && settings.lunch_end &&
+        settings.lunch_start.trim() !== '' && settings.lunch_end.trim() !== '') {
         const lunchStart = parseTime(settings.lunch_start);
         const lunchEnd = parseTime(settings.lunch_end);
 
