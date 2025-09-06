@@ -132,27 +132,48 @@ async function getShopFromPhoneNumber(phoneNumberId) {
     try {
         console.log('Searching for WABA number with phone_number_id:', phoneNumberId, 'type:', typeof phoneNumberId);
 
-        // Add connection state check
+        // Check connection state and reconnect if needed
+        if (mongoose.connection.readyState !== 1) {
+            console.log('Connection lost, attempting to reconnect...');
+            try {
+                await mongoose.connect(process.env.MONGODB_URI, {
+                    serverSelectionTimeoutMS: 3000,
+                    socketTimeoutMS: 20000,
+                    maxPoolSize: 5,
+                    bufferCommands: true,
+                    maxIdleTimeMS: 5000,
+                    connectTimeoutMS: 3000,
+                });
+                console.log('Reconnected to MongoDB');
+            } catch (reconnectError) {
+                console.error('Failed to reconnect:', reconnectError);
+                return null;
+            }
+        }
+
         console.log('Mongoose connection state before query:', mongoose.connection.readyState);
-        console.log('Connection states: 0=disconnected, 1=connected, 2=connecting, 3=disconnecting');
 
-
-        // Add a timeout wrapper around the entire query
+        // Add timeout wrapper around the entire query
         const queryPromise = WabaNumber.findOne({ phone_number_id: phoneNumberId })
-            .maxTimeMS(10000) // 10 second timeout
-            .lean(); // Use lean() for better performance
+            .maxTimeMS(5000) // Reduced timeout for Vercel
+            .lean();
 
         console.log('Starting WABA number query...');
         const wabaNumber = await queryPromise;
         console.log('WABA number query completed successfully');
         console.log('WABA number query result:', wabaNumber);
 
+        if (!wabaNumber) {
+            console.log('No WABA number found for phone_number_id:', phoneNumberId);
+            return null;
+        }
+
         console.log('Found WABA number, getting settings for shop_id:', wabaNumber.shop_id);
 
         // Add timeout and error handling for Settings query
         const settings = await Settings.findOne({ shop_id: wabaNumber.shop_id })
-            .maxTimeMS(10000) // 10 second timeout
-            .lean(); // Use lean() for better performance
+            .maxTimeMS(5000) // Reduced timeout for Vercel
+            .lean();
 
         console.log('Settings query result:', settings);
 

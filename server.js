@@ -18,13 +18,16 @@ app.use(morgan('combined'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// MongoDB Connection with better error handling
+// MongoDB Connection optimized for Vercel
 mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/quickbarber', {
-    serverSelectionTimeoutMS: 5000,
-    socketTimeoutMS: 45000,
-    maxPoolSize: 10,
+    serverSelectionTimeoutMS: 3000, // Reduced for Vercel
+    socketTimeoutMS: 20000, // Reduced for Vercel
+    maxPoolSize: 5, // Reduced for Vercel
     bufferCommands: true,
-    maxIdleTimeMS: 10000,
+    maxIdleTimeMS: 5000, // Reduced for Vercel
+    connectTimeoutMS: 3000, // Add connection timeout
+    retryWrites: true,
+    w: 'majority'
 })
     .then(() => {
         console.log('Connected to MongoDB');
@@ -58,6 +61,7 @@ mongoose.connection.on('disconnected', () => {
 app.use('/api/webhook', require('./routes/webhook'));
 app.use('/api/bookings', require('./routes/bookings'));
 app.use('/api/shops', require('./routes/shops'));
+app.use('/api/admin', require('./routes/admin'));
 
 // Health check endpoint
 app.get('/health', (req, res) => {
