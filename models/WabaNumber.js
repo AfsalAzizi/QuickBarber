@@ -61,4 +61,4 @@ wabaNumberSchema.index({ phone_number_id: 1 });
 wabaNumberSchema.index({ shop_id: 1 });
 wabaNumberSchema.index({ display_phone_number: 1 });
 
-module.exports = mongoose.model('WabaNumber', wabaNumberSchema);
+module.exports = mongoose.model('WabaNumber', wabaNumberSchema, 'wabanumbers');
