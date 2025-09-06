@@ -1,3 +1,4 @@
+const Session = require('../models/Session');
 const WabaNumber = require('../models/WabaNumber');
 const Settings = require('../models/Settings');
 const ServiceCatalog = require('../models/ServiceCatalog');

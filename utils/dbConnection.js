@@ -10,7 +10,7 @@ async function connectToDatabase() {
 
     try {
         await mongoose.connect(process.env.MONGODB_URI, {
-            serverSelectionTimeoutMS: 5000,
+            serverSelectionTimeoutMS: 10000, // Increased from 5000
             socketTimeoutMS: 45000,
             maxPoolSize: 10,
             bufferCommands: true,
@@ -35,8 +35,8 @@ async function ensureConnection() {
         // Wait for connection to be fully established
         await new Promise((resolve, reject) => {
             const timeout = setTimeout(() => {
-                reject(new Error('Connection timeout'));
-            }, 5000);
+                reject(new Error('Connection timeout after 15 seconds'));
+            }, 15000); // Increased from 5000 to 15000
 
             mongoose.connection.once('connected', () => {
                 clearTimeout(timeout);
