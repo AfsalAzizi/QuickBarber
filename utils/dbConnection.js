@@ -1,11 +1,6 @@
 // utils/db.js
 const mongoose = require('mongoose');
 
-const { MONGODB_URI } = process.env;
-if (!MONGODB_URI) {
-    throw new Error('Missing MONGODB_URI env var');
-}
-
 // Reuse the connection across hot-reloads and serverless warm starts
 let cached = global.__mongoose;
 if (!cached) {
@@ -17,6 +12,12 @@ if (!cached) {
  *   await connectToDatabase();
  */
 async function connectToDatabase() {
+    // Check for MONGODB_URI at runtime, not at module load
+    const { MONGODB_URI } = process.env;
+    if (!MONGODB_URI) {
+        throw new Error('Missing MONGODB_URI env var');
+    }
+
     if (cached.conn) return cached.conn;
 
     if (!cached.promise) {

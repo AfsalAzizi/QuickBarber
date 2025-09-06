@@ -6,6 +6,7 @@ const morgan = require('morgan');
 const { connectToDatabase } = require('./utils/dbConnection');
 require('dotenv').config();
 
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -39,8 +40,8 @@ app.use('/api/admin', require('./routes/admin'));
 
 // Health check endpoint
 app.get('/health', (req, res) => {
-    res.status(200).json({ 
-        status: 'OK', 
+    res.status(200).json({
+        status: 'OK',
         timestamp: new Date().toISOString(),
         environment: process.env.NODE_ENV || 'development'
     });
