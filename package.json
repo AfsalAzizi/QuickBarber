@@ -15,7 +15,8 @@
     "docker:stop": "docker-compose down",
     "verify-webhook": "node scripts/verify-webhook.js",
     "test-connection": "node scripts/test-connection.js",
-    "add-data": "node scripts/addMissingData.js"
+    "add-data": "node scripts/addMissingData.js",
+    "test-waba-number": "node scripts/testWabaNumber.js"
   },
   "keywords": [
     "whatsapp",
