@@ -97,12 +97,15 @@ function verifyWebhookSignature(payload, signature) {
 async function processWebhookData(body) {
     try {
         console.log('Full webhook payload:', JSON.stringify(body, null, 2));
+        
         // Handle different types of webhook events
         if (body.object === 'whatsapp_business_account') {
             for (const entry of body.entry) {
                 for (const change of entry.changes) {
                     if (change.field === 'messages') {
                         await processMessages(change.value);
+                    } else {
+                        console.log('Ignoring non-message webhook event:', change.field);
                     }
                 }
             }
@@ -115,7 +118,10 @@ async function processWebhookData(body) {
 // Function to process incoming messages
 async function processMessages(value) {
     try {
-        if (value.messages) {
+        // Only process actual messages, ignore status updates
+        if (value.messages && value.messages.length > 0) {
+            console.log('Processing', value.messages.length, 'incoming message(s)');
+            
             for (const message of value.messages) {
                 console.log('Processing message:', {
                     id: message.id,
@@ -125,10 +131,9 @@ async function processMessages(value) {
                 });
 
                 // Extract phone number ID from the webhook payload
-                // The phone_number_id is usually in the metadata or we need to get it from the webhook context
                 const phoneNumberId = value.metadata?.phone_number_id ||
                     value.phone_number_id ||
-                    process.env.WHATSAPP_PHONE_NUMBER_ID; // Fallback to env var
+                    process.env.WHATSAPP_PHONE_NUMBER_ID;
 
                 console.log('Phone number ID:', phoneNumberId);
 
@@ -147,18 +152,12 @@ async function processMessages(value) {
                 const { processIncomingMessage } = require('../services/messageProcessor');
                 await processIncomingMessage(message, metadata);
             }
-        }
-
-        // Handle message status updates
-        if (value.statuses) {
-            for (const status of value.statuses) {
-                console.log('Message status update:', {
-                    id: status.id,
-                    status: status.status,
-                    timestamp: status.timestamp
-                });
-                // Handle status updates if needed
-            }
+        } else if (value.statuses && value.statuses.length > 0) {
+            // Log status updates but don't process them
+            console.log('Ignoring', value.statuses.length, 'status update(s):', 
+                value.statuses.map(s => `${s.id}: ${s.status}`).join(', '));
+        } else {
+            console.log('No messages or statuses to process in webhook payload');
         }
     } catch (error) {
         console.error('Error processing messages:', error);
