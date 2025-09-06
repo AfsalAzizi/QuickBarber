@@ -585,8 +585,8 @@ async function sendWelcomeWithServices(userPhone, shopInfo, services) {
 ⚡ *Book in seconds, not minutes!*
 
 🚀 *Why WhatsApp booking?*
-• 📱 *No app needed* - Book directly in chat
-• ⚡ *Super fast* - Get your slot instantly
+📱 *No app needed* - Book directly in chat
+⚡ *Super fast* - Get your slot instantly
 
  Choose your service below:
 
