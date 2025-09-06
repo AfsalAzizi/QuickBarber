@@ -80,14 +80,23 @@ async function handlePost(req, res) {
         // Background processing with setImmediate for better performance
         setImmediate(async () => {
             try {
+                console.log('=== BACKGROUND PROCESSING STARTED ===');
                 console.log('Processing webhook payload in background');
 
                 // Single DB connect per request (cached connection)
+                console.log('Connecting to database...');
                 await connectToDatabase();
+                console.log('Database connected successfully');
 
+                console.log('Calling processWebhookData...');
                 await processWebhookData(body);
+                console.log('processWebhookData completed');
+
+                console.log('=== BACKGROUND PROCESSING COMPLETED ===');
             } catch (error) {
+                console.error('=== BACKGROUND PROCESSING ERROR ===');
                 console.error('Background processing error:', error.message);
+                console.error('Error stack:', error.stack);
             }
         });
 
@@ -99,52 +108,72 @@ async function handlePost(req, res) {
 
 // Process WhatsApp webhook data structure
 async function processWebhookData(body) {
-    console.log('Processing webhook data:', JSON.stringify(body, null, 2));
+    try {
+        console.log('=== STARTING processWebhookData ===');
+        console.log('Processing webhook data:', JSON.stringify(body, null, 2));
 
-    if (body.object !== 'whatsapp_business_account') {
-        console.log('Ignoring non-WhatsApp payload');
-        return;
-    }
+        if (body.object !== 'whatsapp_business_account') {
+            console.log('Ignoring non-WhatsApp payload, object:', body.object);
+            return;
+        }
 
-    for (const entry of body.entry || []) {
-        for (const change of entry.changes || []) {
-            if (change.field === 'messages') {
-                await processMessages(change.value);
+        console.log('WhatsApp payload confirmed, processing entries...');
+        for (const entry of body.entry || []) {
+            console.log('Processing entry:', entry.id);
+            for (const change of entry.changes || []) {
+                console.log('Processing change, field:', change.field);
+                if (change.field === 'messages') {
+                    console.log('Messages field found, calling processMessages...');
+                    await processMessages(change.value);
+                }
             }
         }
+        console.log('=== COMPLETED processWebhookData ===');
+    } catch (error) {
+        console.error('Error in processWebhookData:', error);
+        console.error('Error stack:', error.stack);
     }
 }
 
 // Process messages array
 async function processMessages(value) {
-    if (!value.messages || !Array.isArray(value.messages)) {
-        console.log('No messages to process');
-        return;
-    }
+    try {
+        console.log('=== STARTING processMessages ===');
+        console.log('Value received:', JSON.stringify(value, null, 2));
 
-    console.log(`Processing ${value.messages.length} messages for phone: ${value.metadata?.phone_number_id}`);
-
-    for (const message of value.messages) {
-        try {
-            // Skip status messages (delivered, seen, etc.)
-            if (message.type === 'status') {
-                console.log(`Skipping status message: ${message.id}`);
-                continue;
-            }
-
-            // TODO: Add idempotency check here
-            // Check if message.id was already processed to prevent duplicate handling
-            // Example: const existing = await ProcessedMessage.findOne({ message_id: message.id });
-            // if (existing) { console.log('Duplicate message, skipping'); continue; }
-
-            console.log(`Processing message: ${message.id} (${message.type})`);
-
-            // Process the message (DB connection already established)
-            await processIncomingMessage(message, value.metadata || {});
-
-        } catch (error) {
-            console.error(`Error processing message ${message.id}:`, error.message);
+        if (!value.messages || !Array.isArray(value.messages)) {
+            console.log('No messages to process, messages:', value.messages);
+            return;
         }
+
+        console.log(`Processing ${value.messages.length} messages for phone: ${value.metadata?.phone_number_id}`);
+
+        for (const message of value.messages) {
+            try {
+                console.log('Processing individual message:', message.id, 'type:', message.type);
+
+                // Skip status messages (delivered, seen, etc.)
+                if (message.type === 'status') {
+                    console.log(`Skipping status message: ${message.id}`);
+                    continue;
+                }
+
+                console.log(`Processing message: ${message.id} (${message.type})`);
+
+                // Process the message (DB connection already established)
+                console.log('Calling processIncomingMessage...');
+                await processIncomingMessage(message, value.metadata || {});
+                console.log('processIncomingMessage completed for:', message.id);
+
+            } catch (error) {
+                console.error(`Error processing message ${message.id}:`, error);
+                console.error('Error stack:', error.stack);
+            }
+        }
+        console.log('=== COMPLETED processMessages ===');
+    } catch (error) {
+        console.error('Error in processMessages:', error);
+        console.error('Error stack:', error.stack);
     }
 }
 
