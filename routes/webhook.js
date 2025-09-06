@@ -36,6 +36,35 @@ router.post('/', async (req, res) => {
         //     return res.status(403).json({ error: 'Invalid signature' });
         // }
 
+        console.log('=== ENVIRONMENT CHECK ===');
+        console.log('MONGODB_URI exists:', !!process.env.MONGODB_URI);
+        console.log('MONGODB_URI length:', process.env.MONGODB_URI?.length);
+        console.log('MONGODB_URI starts with:', process.env.MONGODB_URI?.substring(0, 20));
+        console.log('NODE_ENV:', process.env.NODE_ENV);
+        console.log('WHATSAPP_ACCESS_TOKEN exists:', !!process.env.WHATSAPP_ACCESS_TOKEN);
+        console.log('========================');
+
+
+        console.log('=== CONNECTION TEST ===');
+
+        // Test connection state
+        console.log('Mongoose ready state:', mongoose.connection.readyState);
+        console.log('Connection states: 0=disconnected, 1=connected, 2=connecting, 3=disconnecting');
+
+        // Try to connect if not connected
+        if (mongoose.connection.readyState !== 1) {
+            console.log('Attempting to connect...');
+            await mongoose.connect(process.env.MONGODB_URI, {
+                serverSelectionTimeoutMS: 10000,
+                socketTimeoutMS: 45000,
+                bufferCommands: true, // Enable buffering
+            });
+            console.log('Connection attempt completed');
+        }
+
+        console.log('Final ready state:', mongoose.connection.readyState);
+        console.log('=======================');
+
         // Respond to webhook immediately (within 20 seconds)
         res.status(200).json({ status: 'received' });
 

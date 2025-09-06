@@ -25,7 +25,7 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/quickbarb
     maxPoolSize: 10, // Maintain up to 10 socket connections
     serverSelectionRetryDelayMS: 5000, // Retry every 5 seconds
     bufferMaxEntries: 0, // Disable mongoose buffering
-    bufferCommands: false, // Disable mongoose buffering
+    bufferCommands: true, // Enable mongoose buffering
     maxIdleTimeMS: 10000, // Close connections after 10 seconds of inactivity
 })
     .then(() => {
