@@ -51,6 +51,7 @@ app.use('/api/webhook', require('./routes/webhook'));
 app.use('/api/bookings', require('./routes/bookings'));
 app.use('/api/shops', require('./routes/shops'));
 app.use('/api/admin', require('./routes/admin'));
+app.use('/api/db-test', require('./routes/db-test'));
 
 // Health check endpoint
 app.get('/health', (req, res) => {
