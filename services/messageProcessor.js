@@ -8,6 +8,7 @@ const { sendWhatsAppMessage, sendButtonMessage } = require('./whatsappService');
 const { detectIntent } = require('./intentDetection');
 const moment = require('moment-timezone');
 const mongoose = require('mongoose');
+const { ensureConnection } = require('../utils/dbConnection');
 
 /**
  * Process incoming WhatsApp message
@@ -132,24 +133,8 @@ async function getShopFromPhoneNumber(phoneNumberId) {
     try {
         console.log('Searching for WABA number with phone_number_id:', phoneNumberId, 'type:', typeof phoneNumberId);
 
-        // Check connection state and reconnect if needed
-        if (mongoose.connection.readyState !== 1) {
-            console.log('Connection lost, attempting to reconnect...');
-            try {
-                await mongoose.connect(process.env.MONGODB_URI, {
-                    serverSelectionTimeoutMS: 3000,
-                    socketTimeoutMS: 20000,
-                    maxPoolSize: 5,
-                    bufferCommands: true,
-                    maxIdleTimeMS: 5000,
-                    connectTimeoutMS: 3000,
-                });
-                console.log('Reconnected to MongoDB');
-            } catch (reconnectError) {
-                console.error('Failed to reconnect:', reconnectError);
-                return null;
-            }
-        }
+        // Ensure database connection before query
+        await ensureConnection();
 
         console.log('Mongoose connection state before query:', mongoose.connection.readyState);
 

@@ -2,6 +2,7 @@ const express = require('express');
 const crypto = require('crypto');
 const router = express.Router();
 const mongoose = require('mongoose');
+const { ensureConnection } = require('../utils/dbConnection'); // Add this import
 
 // WhatsApp webhook verification endpoint
 router.get('/', (req, res) => {
@@ -29,6 +30,9 @@ router.get('/', (req, res) => {
 router.post('/', async (req, res) => {
     try {
         console.log('Received webhook payload:', JSON.stringify(req.body, null, 2));
+
+        // Ensure database connection
+        await ensureConnection();
 
         // Respond to webhook immediately (within 20 seconds)
         res.status(200).json({ status: 'received' });

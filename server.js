@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
+const { connectToDatabase } = require('./utils/dbConnection'); // Add this
 require('dotenv').config();
 
 const app = express();
@@ -18,22 +19,13 @@ app.use(morgan('combined'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// MongoDB Connection optimized for Vercel
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/quickbarber', {
-    serverSelectionTimeoutMS: 3000, // Reduced for Vercel
-    socketTimeoutMS: 20000, // Reduced for Vercel
-    maxPoolSize: 5, // Reduced for Vercel
-    bufferCommands: true,
-    maxIdleTimeMS: 5000, // Reduced for Vercel
-    connectTimeoutMS: 3000, // Add connection timeout
-    retryWrites: true,
-    w: 'majority'
-})
+// Connect to database using utility
+connectToDatabase()
     .then(() => {
-        console.log('Connected to MongoDB');
+        console.log('MongoDB connection established');
     })
     .catch((error) => {
-        console.error('MongoDB connection error:', error);
+        console.error('Failed to connect to MongoDB:', error);
         if (process.env.NODE_ENV !== 'production') {
             process.exit(1);
         }
@@ -44,17 +36,12 @@ mongoose.connection.on('connected', () => {
     console.log('Mongoose connected to MongoDB');
 });
 
-// Handle index creation errors gracefully
-mongoose.connection.on('error', (error) => {
-    if (error.message.includes('E11000') || error.message.includes('duplicate key')) {
-        console.log('Index already exists, continuing...');
-    } else {
-        console.error('MongoDB connection error:', error);
-    }
+mongoose.connection.on('disconnected', () => {
+    console.log('Mongoose disconnected from MongoDB');
 });
 
-mongoose.connection.on('disconnected', () => {
-    console.log('Mongoose disconnected');
+mongoose.connection.on('error', (error) => {
+    console.error('MongoDB connection error:', error);
 });
 
 // Routes
