@@ -102,9 +102,10 @@ function extractMessageContent(message) {
             return message.text.body;
         case 'interactive':
             if (message.interactive.type === 'button_reply') {
-                return message.interactive.button_reply.title;
+                // Return the button ID instead of title for proper intent detection
+                return message.interactive.button_reply.id;
             } else if (message.interactive.type === 'list_reply') {
-                return message.interactive.list_reply.title;
+                return message.interactive.list_reply.id;
             }
             break;
         case 'button':

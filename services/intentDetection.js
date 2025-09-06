@@ -11,6 +11,58 @@ function detectIntent(messageContent, session) {
 
     const message = messageContent.toLowerCase().trim();
 
+    // Check for button clicks first (service selection)
+    if (message.startsWith('service_')) {
+        return 'select_service';
+    }
+
+    // Check for button clicks (barber selection)  
+    if (message.startsWith('barber_')) {
+        return 'select_barber';
+    }
+
+    // Check for "more services" button
+    if (message === 'more_services') {
+        return 'list_services';
+    }
+
+    // Check for "more barbers" button
+    if (message === 'more_barbers') {
+        return 'list_barbers';
+    }
+
+    // Check if we're in service selection phase and user sent a service name
+    if (session.phase === 'service_selection') {
+        // Common service names that might be sent as text
+        const serviceNames = [
+            'hair cut', 'haircut', 'cut', 'trim', 'beard trim', 'beard',
+            'cut + beard', 'cut and beard', 'full service', 'complete service'
+        ];
+
+        for (const serviceName of serviceNames) {
+            if (message.includes(serviceName)) {
+                return 'select_service';
+            }
+        }
+    }
+
+    // Check if we're in barber selection phase and user sent a barber name
+    if (session.phase === 'barber_selection') {
+        return 'select_barber';
+    }
+
+    // Check for number patterns (for service/barber selection)
+    if (/^\d+$/.test(message)) {
+        const number = parseInt(message);
+        if (number >= 1 && number <= 20) {
+            if (session.phase === 'service_selection') {
+                return 'select_service';
+            } else if (session.phase === 'barber_selection') {
+                return 'select_barber';
+            }
+        }
+    }
+
     // Intent patterns
     const intentPatterns = {
         book_appointment: [
@@ -59,49 +111,6 @@ function detectIntent(messageContent, session) {
                 return intent;
             }
         }
-    }
-
-    // Check for button clicks (service selection)
-    if (message.startsWith('service_')) {
-        return 'select_service';
-    }
-
-    // Check for button clicks (barber selection)  
-    if (message.startsWith('barber_')) {
-        return 'select_barber';
-    }
-
-    // Check for "more services" button
-    if (message === 'more_services') {
-        return 'list_services';
-    }
-
-    // Check for number patterns (for service/barber selection)
-    if (/^\d+$/.test(message)) {
-        const number = parseInt(message);
-        if (number >= 1 && number <= 20) {
-            // This could be a service or barber selection
-            if (session.phase === 'service_selection') {
-                return 'select_service';
-            } else if (session.phase === 'barber_selection') {
-                return 'select_barber';
-            }
-        }
-    }
-
-    // Check for time patterns
-    if (isTimePattern(message)) {
-        return 'select_time';
-    }
-
-    // Check for date patterns
-    if (isDatePattern(message)) {
-        return 'select_date';
-    }
-
-    // Check for phone number patterns
-    if (isPhonePattern(message)) {
-        return 'provide_phone';
     }
 
     // Default to general inquiry
