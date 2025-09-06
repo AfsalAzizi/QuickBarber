@@ -4,7 +4,7 @@ const Settings = require('../models/Settings');
 const ServiceCatalog = require('../models/ServiceCatalog');
 const Barber = require('../models/Barber');
 const Booking = require('../models/Booking');
-const { sendWhatsAppMessage } = require('./whatsappService');
+const { sendWhatsAppMessage, sendButtonMessage } = require('./whatsappService');
 const { detectIntent } = require('./intentDetection');
 const moment = require('moment-timezone');
 
@@ -36,7 +36,16 @@ async function processIncomingMessage(message, metadata) {
             return;
         }
 
-        // Load or create user session
+        // Check if this is a first message (no existing session or new conversation)
+        const isFirstMessage = await isFirstMessageFromUser(message.from, shopInfo.shop_id);
+
+        if (isFirstMessage) {
+            // Handle first message with welcome flow
+            await handleFirstMessage(message.from, messageContent, shopInfo, metadata.phone_number_id);
+            return;
+        }
+
+        // Load existing session
         const session = await loadOrCreateSession(message.from, shopInfo.shop_id, metadata.phone_number_id);
 
         // Detect user intent
@@ -193,6 +202,9 @@ async function processIntent(intent, messageContent, session, shopInfo) {
                 break;
             case 'general_inquiry':
                 await handleGeneralInquiry(messageContent, session, shopInfo);
+                break;
+            case 'select_service':
+                await handleServiceSelection(messageContent, session, shopInfo);
                 break;
             default:
                 await handleWelcome(session, shopInfo);
@@ -355,6 +367,179 @@ Phone: ${shopInfo.display_phone_number}
 Is there anything specific I can help you with regarding appointments?`;
 
     await sendWhatsAppMessage(session.user_phone, response);
+}
+
+/**
+ * Handle service selection from button or text
+ * @param {String} messageContent - User's message content
+ * @param {Object} session - User session
+ * @param {Object} shopInfo - Shop information
+ */
+async function handleServiceSelection(messageContent, session, shopInfo) {
+    try {
+        // Check if it's a button selection (service_key format)
+        if (messageContent.startsWith('service_')) {
+            const serviceKey = messageContent.replace('service_', '');
+            const service = await ServiceCatalog.findOne({ service_key: serviceKey });
+
+            if (service) {
+                // Update session with selected service
+                await updateSession(session, {
+                    selected_service: serviceKey,
+                    phase: 'barber_selection'
+                });
+
+                // Get available barbers
+                const barbers = await Barber.find({
+                    shop_id: shopInfo.shop_id,
+                    active: true
+                }).sort({ sort_order: 1 });
+
+                if (barbers.length > 0) {
+                    // Send barber selection message
+                    const barberButtons = barbers.slice(0, 3).map(barber => ({
+                        id: `barber_${barber.barber_id}`,
+                        title: barber.name
+                    }));
+
+                    await sendButtonMessage(
+                        session.user_phone,
+                        `Great! You selected ${service.label}. Now choose your barber:`,
+                        barberButtons
+                    );
+                } else {
+                    await sendWhatsAppMessage(session.user_phone, `Great! You selected ${service.label}. Let me check available barbers and get back to you.`);
+                }
+            }
+        } else {
+            // Handle text-based service selection
+            await handleListServices(session, shopInfo);
+        }
+    } catch (error) {
+        console.error('Error handling service selection:', error);
+        await sendWhatsAppMessage(session.user_phone, 'Sorry, I couldn\'t process your service selection. Please try again.');
+    }
+}
+
+/**
+ * Check if this is the first message from a user
+ * @param {String} userPhone - User's phone number
+ * @param {String} shopId - Shop ID
+ * @returns {Boolean} - True if this is a first message
+ */
+async function isFirstMessageFromUser(userPhone, shopId) {
+    try {
+        // Check if there's any existing session for this user and shop
+        const existingSession = await Session.findOne({
+            user_phone: userPhone,
+            shop_id: shopId
+        });
+
+        return !existingSession;
+    } catch (error) {
+        console.error('Error checking first message:', error);
+        return true; // Default to first message if error
+    }
+}
+
+/**
+ * Handle first message from user
+ * @param {String} userPhone - User's phone number
+ * @param {String} messageContent - User's message content
+ * @param {Object} shopInfo - Shop information
+ * @param {String} phoneNumberId - WhatsApp phone number ID
+ */
+async function handleFirstMessage(userPhone, messageContent, shopInfo, phoneNumberId) {
+    try {
+        console.log('Handling first message from user:', userPhone);
+
+        // Create new session
+        const session = new Session({
+            user_phone: userPhone,
+            shop_id: shopInfo.shop_id,
+            phone_number_id: phoneNumberId,
+            phase: 'welcome',
+            intent: 'first_message',
+            is_active: true,
+            context_data: {
+                first_message: messageContent,
+                first_message_time: new Date()
+            }
+        });
+        await session.save();
+
+        // Get services for the shop
+        const services = await ServiceCatalog.find({ is_active: true }).sort({ sort_order: 1 });
+
+        // Create welcome message with service buttons
+        await sendWelcomeWithServices(userPhone, shopInfo, services);
+
+        // Update session phase
+        await updateSession(session, { phase: 'service_selection' });
+
+    } catch (error) {
+        console.error('Error handling first message:', error);
+        await sendWhatsAppMessage(userPhone, 'Welcome! I\'m here to help you book an appointment. Please try again.');
+    }
+}
+
+/**
+ * Send welcome message with service selection buttons
+ * @param {String} userPhone - User's phone number
+ * @param {Object} shopInfo - Shop information
+ * @param {Array} services - Available services
+ */
+async function sendWelcomeWithServices(userPhone, shopInfo, services) {
+    try {
+        // Welcome message text
+        const welcomeText = `Book in minutes—choose a service below. Reply **menu** anytime to see options again.`;
+
+        // Create service buttons (max 3 buttons for WhatsApp)
+        const serviceButtons = services.slice(0, 3).map(service => ({
+            id: `service_${service.service_key}`,
+            title: service.label
+        }));
+
+        // If there are more than 3 services, add a "More Services" button
+        if (services.length > 3) {
+            serviceButtons.push({
+                id: 'more_services',
+                title: 'More Services'
+            });
+        }
+
+        // Send interactive button message
+        await sendButtonMessage(userPhone, welcomeText, serviceButtons);
+
+        console.log('Welcome message with services sent to:', userPhone);
+
+    } catch (error) {
+        console.error('Error sending welcome with services:', error);
+        // Fallback to simple text message
+        const fallbackMessage = `Welcome to ${shopInfo.settings.shop_name}! 💈\n\nI can help you book an appointment. Please reply with "services" to see our available services.`;
+        await sendWhatsAppMessage(userPhone, fallbackMessage);
+    }
+}
+
+/**
+ * Load existing session
+ * @param {String} userPhone - User's phone number
+ * @param {String} shopId - Shop ID
+ * @returns {Object} - Session object
+ */
+async function loadSession(userPhone, shopId) {
+    try {
+        const session = await Session.findOne({
+            user_phone: userPhone,
+            shop_id: shopId,
+            is_active: true
+        });
+
+        return session;
+    } catch (error) {
+        console.error('Error loading session:', error);
+        return null;
+    }
 }
 
 module.exports = {
