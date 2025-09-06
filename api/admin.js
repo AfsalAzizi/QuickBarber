@@ -1,9 +1,11 @@
 export const runtime = 'nodejs';
 
 const express = require('express');
-const router = express.Router();
 const { connectToDatabase } = require('../utils/dbConnection');
 const mongoose = require('mongoose');
+
+const app = express();
+app.use(express.json());
 
 // Define models
 const Session = mongoose.models.Session || require('../models/Session');
@@ -14,13 +16,13 @@ const Barber = mongoose.models.Barber || require('../models/Barber');
 const Booking = mongoose.models.Booking || require('../models/Booking');
 
 // Clear all sessions
-router.delete('/sessions', async (req, res) => {
+app.delete('/sessions', async (req, res) => {
     try {
         await connectToDatabase();
         const result = await Session.deleteMany({});
-        res.json({
-            message: 'All sessions cleared',
-            deletedCount: result.deletedCount
+        res.json({ 
+            message: 'All sessions cleared', 
+            deletedCount: result.deletedCount 
         });
     } catch (error) {
         console.error('Error clearing sessions:', error);
@@ -29,14 +31,14 @@ router.delete('/sessions', async (req, res) => {
 });
 
 // Clear sessions for specific user
-router.delete('/sessions/:userPhone', async (req, res) => {
+app.delete('/sessions/:userPhone', async (req, res) => {
     try {
         await connectToDatabase();
         const { userPhone } = req.params;
         const result = await Session.deleteMany({ user_phone: userPhone });
-        res.json({
-            message: `Sessions cleared for user ${userPhone}`,
-            deletedCount: result.deletedCount
+        res.json({ 
+            message: `Sessions cleared for user ${userPhone}`, 
+            deletedCount: result.deletedCount 
         });
     } catch (error) {
         console.error('Error clearing user sessions:', error);
@@ -45,14 +47,14 @@ router.delete('/sessions/:userPhone', async (req, res) => {
 });
 
 // Clear sessions for specific shop
-router.delete('/sessions/shop/:shopId', async (req, res) => {
+app.delete('/sessions/shop/:shopId', async (req, res) => {
     try {
         await connectToDatabase();
         const { shopId } = req.params;
         const result = await Session.deleteMany({ shop_id: shopId });
-        res.json({
-            message: `Sessions cleared for shop ${shopId}`,
-            deletedCount: result.deletedCount
+        res.json({ 
+            message: `Sessions cleared for shop ${shopId}`, 
+            deletedCount: result.deletedCount 
         });
     } catch (error) {
         console.error('Error clearing shop sessions:', error);
@@ -61,7 +63,7 @@ router.delete('/sessions/shop/:shopId', async (req, res) => {
 });
 
 // Get session statistics
-router.get('/sessions/stats', async (req, res) => {
+app.get('/sessions/stats', async (req, res) => {
     try {
         await connectToDatabase();
         const stats = await Session.aggregate([
@@ -82,7 +84,7 @@ router.get('/sessions/stats', async (req, res) => {
                 }
             }
         ]);
-
+        
         res.json(stats[0] || { totalSessions: 0, activeSessions: 0, uniqueUsers: 0 });
     } catch (error) {
         console.error('Error getting session stats:', error);
@@ -91,10 +93,10 @@ router.get('/sessions/stats', async (req, res) => {
 });
 
 // Clear all data (nuclear option)
-router.delete('/clear-all', async (req, res) => {
+app.delete('/clear-all', async (req, res) => {
     try {
         await connectToDatabase();
-
+        
         const results = await Promise.all([
             Session.deleteMany({}),
             WabaNumber.deleteMany({}),
@@ -103,8 +105,8 @@ router.delete('/clear-all', async (req, res) => {
             Barber.deleteMany({}),
             Booking.deleteMany({})
         ]);
-
-        res.json({
+        
+        res.json({ 
             message: 'All data cleared',
             results: {
                 sessions: results[0].deletedCount,
@@ -121,4 +123,4 @@ router.delete('/clear-all', async (req, res) => {
     }
 });
 
-module.exports = router;
+export default app;

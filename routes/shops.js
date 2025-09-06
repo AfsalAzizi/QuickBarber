@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 const express = require('express');
 const router = express.Router();
 const Settings = require('../models/Settings');
