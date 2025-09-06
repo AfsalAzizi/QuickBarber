@@ -40,7 +40,7 @@ const sessionSchema = new mongoose.Schema({
     },
     intent: {
         type: String,
-        enum: ['book_appointment', 'check_availability', 'list_services', 'list_barbers', 'cancel_booking', 'reschedule', 'general_inquiry'],
+        enum: ['first_message', 'book_appointment', 'check_availability', 'list_services', 'list_barbers', 'cancel_booking', 'reschedule', 'general_inquiry'],
         default: null
     },
     time_period_key: {
