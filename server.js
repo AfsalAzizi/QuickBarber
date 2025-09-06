@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
-const { connectToDatabase } = require('./utils/dbConnection'); // Add this
+const { connectToDatabase } = require('./utils/dbConnection');
 require('dotenv').config();
 
 const app = express();
@@ -19,7 +19,7 @@ app.use(morgan('combined'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Connect to database using utility
+// Connect to database
 connectToDatabase()
     .then(() => {
         console.log('MongoDB connection established');
@@ -31,19 +31,6 @@ connectToDatabase()
         }
     });
 
-// Handle connection events
-mongoose.connection.on('connected', () => {
-    console.log('Mongoose connected to MongoDB');
-});
-
-mongoose.connection.on('disconnected', () => {
-    console.log('Mongoose disconnected from MongoDB');
-});
-
-mongoose.connection.on('error', (error) => {
-    console.error('MongoDB connection error:', error);
-});
-
 // Routes
 app.use('/api/webhook', require('./routes/webhook'));
 app.use('/api/bookings', require('./routes/bookings'));
@@ -52,20 +39,17 @@ app.use('/api/admin', require('./routes/admin'));
 
 // Health check endpoint
 app.get('/health', (req, res) => {
-    res.status(200).json({
-        status: 'OK',
+    res.status(200).json({ 
+        status: 'OK', 
         timestamp: new Date().toISOString(),
-        uptime: process.uptime()
+        environment: process.env.NODE_ENV || 'development'
     });
 });
 
 // Error handling middleware
 app.use((err, req, res, next) => {
-    console.error(err.stack);
-    res.status(500).json({
-        error: 'Something went wrong!',
-        message: process.env.NODE_ENV === 'development' ? err.message : 'Internal server error'
-    });
+    console.error('Error:', err);
+    res.status(500).json({ error: 'Internal server error' });
 });
 
 // 404 handler
@@ -73,11 +57,10 @@ app.use('*', (req, res) => {
     res.status(404).json({ error: 'Route not found' });
 });
 
-// Start server only if not in Vercel environment
+// Only start server if not in production or not on Vercel
 if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
     app.listen(PORT, () => {
-        console.log(`Server is running on port ${PORT}`);
-        console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+        console.log(`Server running on port ${PORT}`);
     });
 }
 

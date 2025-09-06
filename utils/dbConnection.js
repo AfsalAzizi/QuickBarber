@@ -1,57 +1,44 @@
-// utils/dbConnection.js
+// utils/db.js
 const mongoose = require('mongoose');
 
-let isConnected = false;
+const { MONGODB_URI } = process.env;
+if (!MONGODB_URI) {
+    throw new Error('Missing MONGODB_URI env var');
+}
 
+// Reuse the connection across hot-reloads and serverless warm starts
+let cached = global.__mongoose;
+if (!cached) {
+    cached = global.__mongoose = { conn: null, promise: null };
+}
+
+/**
+ * Call this once at the start of any request that touches the DB:
+ *   await connectToDatabase();
+ */
 async function connectToDatabase() {
-    if (isConnected && mongoose.connection.readyState === 1) {
-        return;
-    }
+    if (cached.conn) return cached.conn;
 
-    try {
-        await mongoose.connect(process.env.MONGODB_URI, {
-            serverSelectionTimeoutMS: 10000, // Increased from 5000
+    if (!cached.promise) {
+        // Optional: align with your preferences
+        mongoose.set('strictQuery', true);
+
+        // IMPORTANT: rely on the driver's pool; don't open per-request connections
+        cached.promise = mongoose.connect(MONGODB_URI, {
+            // Pooling (driver handles socket reuse per lambda instance)
+            maxPoolSize: 10,        // tune as needed (Atlas free/shared: keep modest)
+            minPoolSize: 0,
+            maxIdleTimeMS: 60000,   // keep connections alive for warm invocations
+            // Timeouts
+            serverSelectionTimeoutMS: 5000,
             socketTimeoutMS: 45000,
-            maxPoolSize: 10,
-            bufferCommands: true,
-            maxIdleTimeMS: 10000,
-        });
-
-        isConnected = true;
-        console.log('Database connected successfully');
-    } catch (error) {
-        console.error('Database connection failed:', error);
-        isConnected = false;
-        throw error;
+            // Mongoose tweaks
+            bufferCommands: false,  // prefer false in prod; fail fast if disconnected
+        }).then((m) => m);
     }
+
+    cached.conn = await cached.promise;
+    return cached.conn;
 }
 
-async function ensureConnection() {
-    // Wait for connection to be fully ready
-    if (mongoose.connection.readyState !== 1) {
-        console.log('Database not ready, connecting...');
-        await connectToDatabase();
-
-        // Wait for connection to be fully established
-        await new Promise((resolve, reject) => {
-            const timeout = setTimeout(() => {
-                reject(new Error('Connection timeout after 15 seconds'));
-            }, 15000); // Increased from 5000 to 15000
-
-            mongoose.connection.once('connected', () => {
-                clearTimeout(timeout);
-                resolve();
-            });
-
-            mongoose.connection.once('error', (err) => {
-                clearTimeout(timeout);
-                reject(err);
-            });
-        });
-    }
-}
-
-module.exports = {
-    connectToDatabase,
-    ensureConnection
-};
+module.exports = { connectToDatabase };
