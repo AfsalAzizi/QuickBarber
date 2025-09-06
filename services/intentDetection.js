@@ -21,6 +21,16 @@ function detectIntent(messageContent, session) {
         return 'select_barber';
     }
 
+    // Check for button clicks (time period selection)
+    if (message.startsWith('time_')) {
+        return 'select_time_period';
+    }
+
+    // Check for button clicks (time slot selection)
+    if (message.startsWith('slot_')) {
+        return 'select_specific_time';
+    }
+
     // Check for "more services" button
     if (message === 'more_services') {
         return 'list_services';
@@ -51,6 +61,11 @@ function detectIntent(messageContent, session) {
         return 'select_barber';
     }
 
+    // Check if we're in time selection phase
+    if (session.phase === 'time_selection') {
+        return 'select_time_period';
+    }
+
     // Check for number patterns (for service/barber selection)
     if (/^\d+$/.test(message)) {
         const number = parseInt(message);
@@ -59,6 +74,8 @@ function detectIntent(messageContent, session) {
                 return 'select_service';
             } else if (session.phase === 'barber_selection') {
                 return 'select_barber';
+            } else if (session.phase === 'time_selection') {
+                return 'select_time_period';
             }
         }
     }
@@ -92,12 +109,6 @@ function detectIntent(messageContent, session) {
         general_inquiry: [
             'hello', 'hi', 'hey', 'help', 'information', 'info', 'contact', 'phone', 'address',
             'location', 'hours', 'timing', 'open', 'closed', 'when do you open', 'when do you close'
-        ],
-        select_time_period: [
-            'immediate', 'next', 'evening', 'later', 'today', 'time'
-        ],
-        select_specific_time: [
-            'slot_', 'time_', 'am', 'pm'
         ]
     };
 

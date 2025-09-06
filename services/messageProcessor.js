@@ -640,12 +640,13 @@ async function handleBarberSelection(messageContent, session, shopInfo) {
         });
 
         // Send confirmation message
-        const confirmationText = `Booking Summary:\n\nService: ${service ? service.label : 'Selected Service'}\nBarber: ${selectedBarber.name}\nDuration: ${service ? service.duration_min : 'N/A'} minutes\n\nNext step: Select your preferred date and time.\n\nReply "back" to change your barber selection.`;
+        const confirmationText = `Booking Summary:\n\nService: ${service ? service.label : 'Selected Service'}\nBarber: ${selectedBarber.name}\nDuration: ${service ? service.duration_min : 'N/A'} minutes\n\nNext step: Select your preferred time period.`;
 
         await sendWhatsAppMessage(session.user_phone, confirmationText);
 
-        // TODO: Add time selection flow here
-        await sendWhatsAppMessage(session.user_phone, 'Time selection functionality will be implemented in the next phase. Please contact us directly to complete your booking.');
+        // Show time period selection options
+        console.log('Showing time period options for user:', session.user_phone);
+        await showTimePeriodOptions(session, shopInfo);
 
         console.log('Barber selection completed for:', session.user_phone);
 
