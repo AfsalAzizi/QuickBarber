@@ -8,7 +8,6 @@
     "dev": "nodemon server.js",
     "test": "jest",
     "build": "echo 'No build step required'",
-    "vercel-build": "echo 'Vercel build completed'",
     "docker:build": "docker build -t quickbarber-backend .",
     "docker:run": "docker run -p 3000:3000 --env-file .env quickbarber-backend",
     "docker:dev": "docker-compose up --build",
