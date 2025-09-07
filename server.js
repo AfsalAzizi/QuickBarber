@@ -18,123 +18,39 @@ app.use(morgan('combined'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Global connection state
-let isConnecting = false;
-let connectionPromise = null;
+// Simple database connection - the standard way
+mongoose.connect(process.env.MONGODB_URI, {
+    serverSelectionTimeoutMS: 5000,
+    socketTimeoutMS: 45000,
+    maxPoolSize: 1,
+    bufferCommands: true,
+});
 
-// Connect to database with better error handling
-async function connectToDatabase() {
-    try {
-        // If already connected, return
-        if (mongoose.connection.readyState === 1) {
-            console.log('Using existing MongoDB connection');
-            return mongoose.connection;
-        }
+// Connection event listeners
+mongoose.connection.on('connected', () => {
+    console.log('MongoDB connected successfully');
+});
 
-        // If already connecting, wait for that connection
-        if (isConnecting && connectionPromise) {
-            console.log('Already connecting, waiting for connection...');
-            return await connectionPromise;
-        }
+mongoose.connection.on('error', (err) => {
+    console.error('MongoDB connection error:', err);
+});
 
-        // Start new connection
-        isConnecting = true;
-        console.log('Connecting to MongoDB...');
-        console.log('MongoDB URI exists:', !!process.env.MONGODB_URI);
-
-        if (!process.env.MONGODB_URI) {
-            throw new Error('MONGODB_URI environment variable is not set');
-        }
-
-        // Create connection promise
-        connectionPromise = mongoose.connect(process.env.MONGODB_URI, {
-            serverSelectionTimeoutMS: 10000,
-            socketTimeoutMS: 45000,
-            maxPoolSize: 1, // Single connection for serverless
-            bufferCommands: true, // Enable buffering for serverless
-            bufferMaxEntries: 0, // Unlimited buffering
-            maxIdleTimeMS: 10000,
-        });
-
-        await connectionPromise;
-        console.log('MongoDB connected successfully');
-        isConnecting = false;
-
-        // Add connection event listeners
-        mongoose.connection.on('connected', () => {
-            console.log('Mongoose connected to MongoDB');
-            isConnecting = false;
-        });
-
-        mongoose.connection.on('error', (err) => {
-            console.error('MongoDB connection error:', err);
-            isConnecting = false;
-        });
-
-        mongoose.connection.on('disconnected', () => {
-            console.log('Mongoose disconnected from MongoDB');
-            isConnecting = false;
-        });
-
-        return mongoose.connection;
-
-    } catch (error) {
-        isConnecting = false;
-        connectionPromise = null;
-        console.error('MongoDB connection failed:', error);
-        console.error('Error details:', {
-            message: error.message,
-            name: error.name,
-            code: error.code
-        });
-
-        if (process.env.NODE_ENV !== 'production') {
-            process.exit(1);
-        }
-        throw error;
-    }
-}
-
-// Ensure database connection is ready
-async function ensureDatabaseConnection() {
-    try {
-        if (mongoose.connection.readyState !== 1) {
-            console.log('Database not connected, establishing connection...');
-            await connectToDatabase();
-        }
-        return mongoose.connection;
-    } catch (error) {
-        console.error('Failed to ensure database connection:', error);
-        throw error;
-    }
-}
-
-// Initialize database connection
-connectToDatabase().catch(console.error);
+mongoose.connection.on('disconnected', () => {
+    console.log('MongoDB disconnected');
+});
 
 // Routes
 app.use('/api/webhook', require('./routes/webhook'));
 app.use('/api/db-test', require('./routes/db-test'));
 
 // Health check endpoint
-app.get('/health', async (req, res) => {
-    try {
-        await ensureDatabaseConnection();
-        res.status(200).json({
-            status: 'OK',
-            timestamp: new Date().toISOString(),
-            environment: process.env.NODE_ENV || 'development',
-            dbStatus: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected'
-        });
-    } catch (error) {
-        res.status(500).json({
-            status: 'ERROR',
-            timestamp: new Date().toISOString(),
-            environment: process.env.NODE_ENV || 'development',
-            dbStatus: 'connection_failed',
-            error: error.message
-        });
-    }
+app.get('/health', (req, res) => {
+    res.status(200).json({
+        status: 'OK',
+        timestamp: new Date().toISOString(),
+        environment: process.env.NODE_ENV || 'development',
+        dbStatus: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected'
+    });
 });
 
 // Error handling middleware
@@ -155,7 +71,4 @@ if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
     });
 }
 
-// Export both the app and the connection function
 module.exports = app;
-module.exports.connectToDatabase = connectToDatabase;
-module.exports.ensureDatabaseConnection = ensureDatabaseConnection;
