@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { processIncomingMessage } = require('../services/messageProcessor');
+const { ensureDatabaseConnection } = require('../server');
 
 // WhatsApp webhook verification endpoint
 router.get('/', (req, res) => {
@@ -27,6 +28,11 @@ router.get('/', (req, res) => {
 router.post('/', async (req, res) => {
     try {
         console.log('Received webhook payload:', JSON.stringify(req.body, null, 2));
+
+        // Ensure database connection before processing
+        console.log('Ensuring database connection...');
+        await ensureDatabaseConnection();
+        console.log('Database connection confirmed');
 
         // Respond immediately
         res.status(200).json({ status: 'received' });
