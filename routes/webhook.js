@@ -1,6 +1,5 @@
 const express = require('express');
 const router = express.Router();
-const { connectToDatabase } = require('../utils/dbConnection');
 const { processIncomingMessage } = require('../services/messageProcessor');
 
 // WhatsApp webhook verification endpoint
@@ -29,13 +28,18 @@ router.post('/', async (req, res) => {
     try {
         console.log('Received webhook payload:', JSON.stringify(req.body, null, 2));
 
-        // Ensure database connection
-        console.log('Ensuring database connection...');
-        await connectToDatabase();
-        console.log('Database connection confirmed');
-
+        // Respond immediately
         res.status(200).json({ status: 'received' });
-        await processWebhookData(req.body);
+
+        // Process in background
+        setImmediate(async () => {
+            try {
+                await processWebhookData(req.body);
+            } catch (error) {
+                console.error('Background processing error:', error);
+            }
+        });
+
     } catch (error) {
         console.error('Error processing webhook:', error);
         res.status(500).json({ error: 'Internal server error' });
@@ -61,9 +65,6 @@ async function processWebhookData(body) {
 async function processMessages(value) {
     try {
         console.log('Processing messages for phone number:', value.metadata.phone_number_id);
-
-        // Remove this line - database connection should already be established
-        // await connectToDatabase();
 
         if (value.messages) {
             for (const message of value.messages) {

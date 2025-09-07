@@ -183,7 +183,7 @@ router.get('/models', async (req, res) => {
 router.get('/env', (req, res) => {
     try {
         const mongoUri = process.env.MONGODB_URI;
-        
+
         res.status(200).json({
             timestamp: new Date().toISOString(),
             hasMongoUri: !!mongoUri,
