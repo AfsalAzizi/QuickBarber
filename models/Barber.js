@@ -4,13 +4,11 @@ const barberSchema = new mongoose.Schema({
     barber_id: {
         type: String,
         required: true,
-        unique: true,
-        index: true
+        unique: true
     },
     shop_id: {
         type: String,
-        required: true,
-        index: true
+        required: true
     },
     name: {
         type: String,

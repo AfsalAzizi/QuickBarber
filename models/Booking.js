@@ -4,24 +4,20 @@ const bookingSchema = new mongoose.Schema({
     booking_id: {
         type: String,
         required: true,
-        unique: true,
-        index: true
+        unique: true
     },
     booking_code: {
         type: String,
         required: true,
-        unique: true,
-        index: true
+        unique: true
     },
     shop_id: {
         type: String,
-        required: true,
-        index: true
+        required: true
     },
     date: {
         type: Date,
-        required: true,
-        index: true
+        required: true
     },
     start_time: {
         type: String,
@@ -45,13 +41,11 @@ const bookingSchema = new mongoose.Schema({
     },
     service_key: {
         type: String,
-        required: true,
-        index: true
+        required: true
     },
     customer_phone: {
         type: String,
         required: true,
-        index: true,
         validate: {
             validator: function (v) {
                 return /^\+?[1-9]\d{1,14}$/.test(v);
@@ -61,19 +55,16 @@ const bookingSchema = new mongoose.Schema({
     },
     barber_id: {
         type: String,
-        required: true,
-        index: true
+        required: true
     },
     status: {
         type: String,
         enum: ['pending', 'confirmed', 'completed', 'cancelled', 'no_show', 'rescheduled'],
-        default: 'pending',
-        index: true
+        default: 'pending'
     },
     created_at: {
         type: Date,
-        default: Date.now,
-        index: true
+        default: Date.now
     },
     // Additional fields for booking management
     customer_name: {

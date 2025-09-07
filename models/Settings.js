@@ -4,8 +4,7 @@ const settingsSchema = new mongoose.Schema({
     shop_id: {
         type: String,
         required: true,
-        unique: true,
-        index: true
+        unique: true
     },
     shop_name: {
         type: String,

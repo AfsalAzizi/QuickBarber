@@ -4,8 +4,7 @@ const serviceCatalogSchema = new mongoose.Schema({
     service_key: {
         type: String,
         required: true,
-        unique: true,
-        index: true
+        unique: true
     },
     label: {
         type: String,

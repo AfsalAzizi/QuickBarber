@@ -4,8 +4,7 @@ const wabaNumberSchema = new mongoose.Schema({
     phone_number_id: {
         type: String,
         required: true,
-        unique: true,
-        index: true
+        unique: true
     },
     display_phone_number: {
         type: String,
@@ -19,8 +18,7 @@ const wabaNumberSchema = new mongoose.Schema({
     },
     shop_id: {
         type: String,
-        required: true,
-        index: true
+        required: true
     },
     sheet_id: {
         type: String,
