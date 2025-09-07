@@ -18,7 +18,7 @@ app.use(morgan('combined'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Database connection function with detailed logging
+// Database connection function with timeout and fallback
 async function connectToDatabase() {
     try {
         console.log('🔍 Starting database connection process...');
@@ -53,23 +53,32 @@ async function connectToDatabase() {
 
         console.log('🔍 Attempting to connect to MongoDB...');
         console.log(' Connection options:');
+
+        // Remove deprecated options and use modern connection options
         const connectionOptions = {
-            serverSelectionTimeoutMS: 30000,
+            serverSelectionTimeoutMS: 10000, // Reduced timeout
             socketTimeoutMS: 45000,
             maxPoolSize: 1,
             bufferCommands: true,
             retryWrites: true,
             w: 'majority',
-            useNewUrlParser: true,
-            useUnifiedTopology: true,
+            // Removed deprecated options: useNewUrlParser, useUnifiedTopology
         };
+
         console.log('  - serverSelectionTimeoutMS:', connectionOptions.serverSelectionTimeoutMS);
         console.log('  - socketTimeoutMS:', connectionOptions.socketTimeoutMS);
         console.log('  - maxPoolSize:', connectionOptions.maxPoolSize);
         console.log('  - bufferCommands:', connectionOptions.bufferCommands);
 
         const startTime = Date.now();
-        await mongoose.connect(process.env.MONGODB_URI, connectionOptions);
+
+        // Add timeout wrapper to prevent hanging
+        const connectionPromise = mongoose.connect(process.env.MONGODB_URI, connectionOptions);
+        const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('Connection timeout after 15 seconds')), 15000);
+        });
+
+        await Promise.race([connectionPromise, timeoutPromise]);
         const connectionTime = Date.now() - startTime;
 
         console.log('✅ MongoDB connected successfully');
@@ -86,7 +95,6 @@ async function connectToDatabase() {
         console.error('  - Error name:', error.name);
         console.error('  - Error message:', error.message);
         console.error('  - Error code:', error.code);
-        console.error('  - Error stack:', error.stack);
 
         if (error.name === 'MongoServerSelectionError') {
             console.error('🔍 Server selection error details:');
@@ -139,17 +147,23 @@ mongoose.connection.on('reconnected', () => {
     console.log('🔄 Mongoose reconnected to MongoDB');
 });
 
-// Initialize server only after database connection
+// Initialize server with fallback for database connection
 async function startServer() {
     try {
         console.log('🚀 Starting server initialization...');
 
-        // Wait for database connection
-        await connectToDatabase();
+        // Try to connect to database with timeout
+        try {
+            await connectToDatabase();
+            console.log('✅ Database connection successful');
+        } catch (dbError) {
+            console.error('⚠️ Database connection failed, starting server anyway...');
+            console.error('Database operations will fail until connection is established');
+        }
 
-        console.log('✅ Database connection successful, registering routes...');
+        console.log(' Registering routes...');
 
-        // Routes
+        // Routes - always register these
         app.use('/api/webhook', require('./routes/webhook'));
         app.use('/api/db-test', require('./routes/db-test'));
 
@@ -205,7 +219,6 @@ async function startServer() {
         console.error('❌ Failed to start server:', error);
         console.error('  - Error name:', error.name);
         console.error('  - Error message:', error.message);
-        console.error('  - Error stack:', error.stack);
 
         if (process.env.NODE_ENV !== 'production') {
             process.exit(1);
