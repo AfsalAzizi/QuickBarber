@@ -6,8 +6,8 @@ import {
   ServiceCatalog,
   Barber,
   Booking,
-} from "@/models";
-import { ApiResponse } from "@/types/express";
+} from "../models";
+import { ApiResponse } from "../types/express";
 
 export class AdminController {
   // Clear all sessions
