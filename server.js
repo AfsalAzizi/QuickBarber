@@ -18,7 +18,7 @@ app.use(morgan('combined'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Simple database connection function - like your working TypeScript example
+// Database connection function with proper serverless configuration
 async function connectToDatabase() {
     try {
         console.log('🔍 Connecting to MongoDB...');
@@ -28,12 +28,36 @@ async function connectToDatabase() {
             throw new Error('MONGODB_URI environment variable is not set');
         }
 
-        // Simple connection - just like your working example
-        await mongoose.connect(process.env.MONGODB_URI);
-        console.log('✅ Connected to MongoDB');
+        // Add connection event listeners for debugging
+        mongoose.connection.on('connecting', () => {
+            console.log('🔄 Mongoose connecting...');
+        });
+
+        mongoose.connection.on('connected', () => {
+            console.log('✅ Mongoose connected to MongoDB');
+        });
+
+        mongoose.connection.on('error', (err) => {
+            console.error('❌ Mongoose connection error:', err);
+        });
+
+        mongoose.connection.on('disconnected', () => {
+            console.log('⚠️ Mongoose disconnected');
+        });
+
+        // Connection with serverless-friendly options
+        await mongoose.connect(process.env.MONGODB_URI, {
+            serverSelectionTimeoutMS: 10000, // 10 second timeout
+            bufferCommands: false, // Disable mongoose buffering
+            bufferMaxEntries: 0, // Disable mongoose buffering
+        });
+
+        console.log('✅ Connected to MongoDB successfully');
 
     } catch (error) {
         console.error('❌ MongoDB connection error:', error);
+        console.error('  - Error name:', error.name);
+        console.error('  - Error message:', error.message);
         throw error;
     }
 }
