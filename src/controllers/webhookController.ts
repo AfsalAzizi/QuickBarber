@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
-import { config } from "@/config/environment";
-import { processIncomingMessage } from "@/services/messageProcessor";
-import { WhatsAppWebhookData, ApiResponse } from "@/types/express";
+import { config } from "../config/environment";
+import { processIncomingMessage } from "../services/messageProcessor";
+import { WhatsAppWebhookData, ApiResponse } from "../types/express";
 
 export class WebhookController {
   // WhatsApp webhook verification endpoint

@@ -1,5 +1,5 @@
 import axios, { AxiosResponse } from "axios";
-import { config } from "@/config/environment";
+import { config } from "../config/environment";
 
 const WHATSAPP_API_URL = `${config.whatsappApiVersion}/${config.whatsappPhoneNumberId}/messages`;
 

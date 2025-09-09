@@ -4,7 +4,7 @@ import {
   HealthCheckResponse,
   DatabaseHealthResponse,
   ApiResponse,
-} from "@/types/express";
+} from "../types/express";
 import {
   Session,
   WabaNumber,
@@ -12,7 +12,7 @@ import {
   ServiceCatalog,
   Barber,
   Booking,
-} from "@/models";
+} from "../models";
 
 export class HealthController {
   // Basic health check endpoint
