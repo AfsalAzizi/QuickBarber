@@ -45,11 +45,14 @@ async function connectToDatabase() {
             console.log('⚠️ Mongoose disconnected');
         });
 
-        // Connection with Vercel-specific options
+        // Connection with aggressive timeouts for Vercel
         const connectionOptions = {
-            serverSelectionTimeoutMS: 5000, // 5 second timeout for Vercel
-            connectTimeoutMS: 5000, // 5 second connection timeout
-            socketTimeoutMS: 5000, // 5 second socket timeout
+            serverSelectionTimeoutMS: 3000, // 3 second timeout
+            connectTimeoutMS: 3000, // 3 second connection timeout
+            socketTimeoutMS: 3000, // 3 second socket timeout
+            maxPoolSize: 1, // Limit connection pool for serverless
+            minPoolSize: 0, // No minimum pool size
+            maxIdleTimeMS: 10000, // Close connections after 10 seconds
         };
 
         // Add serverless-specific options if on Vercel
@@ -59,7 +62,14 @@ async function connectToDatabase() {
         }
 
         console.log('🔗 Attempting MongoDB connection with options:', connectionOptions);
-        await mongoose.connect(process.env.MONGODB_URI, connectionOptions);
+
+        // Add a timeout wrapper to prevent hanging
+        const connectionPromise = mongoose.connect(process.env.MONGODB_URI, connectionOptions);
+        const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('Connection timeout after 5 seconds')), 5000);
+        });
+
+        await Promise.race([connectionPromise, timeoutPromise]);
 
         console.log('✅ Connected to MongoDB successfully');
 
@@ -76,13 +86,28 @@ async function startServer() {
     try {
         console.log('🚀 Starting server initialization...');
 
-        // Connect to database first
-        await connectToDatabase();
-        console.log('✅ Database connection successful, registering routes...');
+        // Try to connect to database, but don't fail if it doesn't work
+        try {
+            await connectToDatabase();
+            console.log('✅ Database connection successful, registering routes...');
+        } catch (dbError) {
+            console.error('⚠️ Database connection failed, but continuing with server startup...');
+            console.error('Database error:', dbError.message);
+        }
 
         // Routes
         app.use('/api/webhook', require('./routes/webhook'));
         app.use('/api/db-test', require('./routes/db-test'));
+
+        // Simple test endpoint (no DB required)
+        app.get('/api/test', (req, res) => {
+            res.json({
+                status: 'OK',
+                timestamp: new Date().toISOString(),
+                message: 'API is working without database',
+                environment: process.env.NODE_ENV || 'development'
+            });
+        });
 
         // Simple health check endpoint
         app.get('/health', (req, res) => {

@@ -2,17 +2,22 @@
   "version": 2,
   "builds": [
     {
-      "src": "server.js",
+      "src": "src/index.ts",
       "use": "@vercel/node"
     }
   ],
   "routes": [
     {
       "src": "/(.*)",
-      "dest": "/server.js"
+      "dest": "/src/index.ts"
     }
   ],
   "env": {
     "NODE_ENV": "production"
+  },
+  "functions": {
+    "src/index.ts": {
+      "runtime": "nodejs20.x"
+    }
   }
 }

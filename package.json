@@ -1,22 +1,26 @@
 {
   "name": "quickbarber-backend",
   "version": "1.0.0",
-  "description": "Node.js API for QuickBarber WhatsApp appointment system",
-  "main": "server.js",
+  "description": "TypeScript API for QuickBarber WhatsApp appointment system",
+  "main": "dist/index.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "nodemon server.js",
+    "start": "node dist/index.js",
+    "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "clean": "rm -rf dist",
+    "prebuild": "npm run clean",
+    "vercel-build": "npm run build",
     "test": "jest",
-    "build": "npm install",
-    "vercel-build": "npm install",
+    "test:watch": "jest --watch",
     "docker:build": "docker build -t quickbarber-backend .",
     "docker:run": "docker run -p 3000:3000 --env-file .env quickbarber-backend",
     "docker:dev": "docker-compose up --build",
     "docker:stop": "docker-compose down",
-    "verify-webhook": "node scripts/verify-webhook.js",
-    "test-connection": "node scripts/test-connection.js",
-    "add-data": "node scripts/addMissingData.js",
-    "test-waba-number": "node scripts/testWabaNumber.js"
+    "verify-webhook": "ts-node scripts/verify-webhook.ts",
+    "test-connection": "ts-node scripts/test-connection.ts",
+    "add-data": "ts-node scripts/addMissingData.ts",
+    "test-waba-number": "ts-node scripts/testWabaNumber.ts"
   },
   "keywords": [
     "whatsapp",
@@ -35,13 +39,22 @@
     "helmet": "^7.1.0",
     "morgan": "^1.10.0",
     "axios": "^1.6.2",
-    "crypto": "^1.0.1",
     "moment": "^2.29.4",
     "moment-timezone": "^0.5.43"
   },
   "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/cors": "^2.8.17",
+    "@types/morgan": "^1.9.9",
+    "@types/node": "^20.10.5",
+    "@types/jest": "^29.5.8",
+    "typescript": "^5.3.3",
+    "ts-node": "^10.9.1",
+    "ts-node-dev": "^2.0.0",
+    "tsconfig-paths": "^4.2.0",
     "nodemon": "^3.0.2",
-    "jest": "^29.7.0"
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.1"
   },
   "engines": {
     "node": ">=18.0.0"
