@@ -1,7 +1,5 @@
 {
   "version": 2,
   "builds": [{ "src": "package.json", "use": "@vercel/node@3.0.7" }],
-  "installCommand": "npm install",
-  "buildCommand": "npm run build",
   "routes": [{ "src": "/(.*)", "dest": "/dist/index.js" }]
 }
