@@ -51,13 +51,27 @@ async function startServer() {
         app.use('/api/webhook', require('./routes/webhook'));
         app.use('/api/db-test', require('./routes/db-test'));
 
-        // Health check endpoint
+        // Simple health check endpoint
         app.get('/health', (req, res) => {
+            const dbState = mongoose.connection.readyState;
+            const stateNames = {
+                0: 'disconnected',
+                1: 'connected',
+                2: 'connecting',
+                3: 'disconnecting'
+            };
+
             res.status(200).json({
                 status: 'OK',
                 timestamp: new Date().toISOString(),
                 environment: process.env.NODE_ENV || 'development',
-                dbStatus: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected'
+                database: {
+                    state: dbState,
+                    stateName: stateNames[dbState],
+                    connected: dbState === 1
+                },
+                uptime: process.uptime(),
+                memory: process.memoryUsage()
             });
         });
 
