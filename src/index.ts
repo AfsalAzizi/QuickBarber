@@ -1,4 +1,5 @@
 import "tsconfig-paths/register";
+import "module-alias/register";
 import express, { Application } from "express";
 import { config, validateEnvironment } from "@/config/environment";
 import { connectToDatabase } from "@/config/database";
