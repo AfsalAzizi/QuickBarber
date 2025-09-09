@@ -1,5 +1,5 @@
 import mongoose, { Schema } from "mongoose";
-import { ISession, SessionPhase, SessionIntent } from "@/types/models";
+import { ISession, SessionPhase, SessionIntent } from "../types/models";
 
 const sessionSchema = new Schema<ISession>(
   {

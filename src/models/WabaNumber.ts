@@ -1,5 +1,5 @@
 import mongoose, { Schema } from "mongoose";
-import { IWabaNumber } from "@/types/models";
+import { IWabaNumber } from "../types/models";
 
 const wabaNumberSchema = new Schema<IWabaNumber>(
   {
@@ -59,7 +59,7 @@ const wabaNumberSchema = new Schema<IWabaNumber>(
 );
 
 // Create indexes with error handling
-wabaNumberSchema.index({ phone_number_id: 1 }, { background: true });
+// phone_number_id already has a unique index via field definition
 wabaNumberSchema.index({ shop_id: 1 }, { background: true });
 wabaNumberSchema.index({ display_phone_number: 1 }, { background: true });
 

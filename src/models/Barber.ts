@@ -1,5 +1,5 @@
 import mongoose, { Schema } from "mongoose";
-import { IBarber, IBarberWorkingHours } from "@/types/models";
+import { IBarber, IBarberWorkingHours } from "../types/models";
 
 const workingHoursSchema = new Schema<IBarberWorkingHours>(
   {
@@ -78,8 +78,7 @@ const barberSchema = new Schema<IBarber>(
   }
 );
 
-// Index for efficient queries
-barberSchema.index({ barber_id: 1 });
+// Index for efficient queries (barber_id is unique already)
 barberSchema.index({ shop_id: 1, active: 1 });
 barberSchema.index({ shop_id: 1, sort_order: 1 });
 

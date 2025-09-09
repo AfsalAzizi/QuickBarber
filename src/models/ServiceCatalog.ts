@@ -1,5 +1,5 @@
 import mongoose, { Schema } from "mongoose";
-import { IServiceCatalog } from "@/types/models";
+import { IServiceCatalog } from "../types/models";
 
 const serviceCatalogSchema = new Schema<IServiceCatalog>(
   {
@@ -46,8 +46,7 @@ const serviceCatalogSchema = new Schema<IServiceCatalog>(
   }
 );
 
-// Index for efficient queries
-serviceCatalogSchema.index({ service_key: 1 });
+// Index for efficient queries (service_key is unique already)
 serviceCatalogSchema.index({ is_active: 1, sort_order: 1 });
 
 export const ServiceCatalog =

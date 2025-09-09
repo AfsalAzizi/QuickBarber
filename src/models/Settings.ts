@@ -1,5 +1,5 @@
 import mongoose, { Schema } from "mongoose";
-import { ISettings } from "@/types/models";
+import { ISettings } from "../types/models";
 
 const settingsSchema = new Schema<ISettings>(
   {
@@ -86,8 +86,7 @@ const settingsSchema = new Schema<ISettings>(
   }
 );
 
-// Index for efficient queries
-settingsSchema.index({ shop_id: 1 });
+// Index for efficient queries (shop_id is unique already)
 
 export const Settings =
   mongoose.models.Settings ||
