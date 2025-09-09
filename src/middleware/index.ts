@@ -2,7 +2,7 @@ import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
-import { config } from "@/config/environment";
+import { config } from "../config/environment";
 
 // CORS middleware
 export const corsMiddleware = cors({
