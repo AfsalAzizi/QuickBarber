@@ -45,8 +45,21 @@ async function connectToDatabase() {
             console.log('⚠️ Mongoose disconnected');
         });
 
-        // Connection with serverless-friendly options
-        await mongoose.connect(process.env.MONGODB_URI);
+        // Connection with Vercel-specific options
+        const connectionOptions = {
+            serverSelectionTimeoutMS: 5000, // 5 second timeout for Vercel
+            connectTimeoutMS: 5000, // 5 second connection timeout
+            socketTimeoutMS: 5000, // 5 second socket timeout
+        };
+
+        // Add serverless-specific options if on Vercel
+        if (process.env.VERCEL) {
+            connectionOptions.bufferCommands = false;
+            console.log('🔧 Using Vercel-specific connection options');
+        }
+
+        console.log('🔗 Attempting MongoDB connection with options:', connectionOptions);
+        await mongoose.connect(process.env.MONGODB_URI, connectionOptions);
 
         console.log('✅ Connected to MongoDB successfully');
 
