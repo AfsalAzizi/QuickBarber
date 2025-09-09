@@ -19,7 +19,7 @@ export const config = {
   whatsappVerifyToken: process.env.WHATSAPP_VERIFY_TOKEN || "",
   whatsappPhoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID || "",
   whatsappWebhookUrl: process.env.WHATSAPP_WEBHOOK_URL || "",
-  whatsappApiVersion: process.env.WHATSAPP_API_VERSION || "v18.0",
+  whatsappApiVersion: process.env.WHATSAPP_API_VERSION || "v20.0",
 
   // Business configuration
   businessAccountId: process.env.BUSINESS_ACCOUNT_ID || "",

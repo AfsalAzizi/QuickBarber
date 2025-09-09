@@ -1,7 +1,7 @@
 import axios, { AxiosResponse } from "axios";
 import { config } from "../config/environment";
 
-const WHATSAPP_API_URL = `${config.whatsappApiVersion}/${config.whatsappPhoneNumberId}/messages`;
+const WHATSAPP_API_URL = `https://graph.facebook.com/${config.whatsappApiVersion}/${config.whatsappPhoneNumberId}/messages`;
 
 export interface WhatsAppMessageResponse {
   messaging_product: string;
@@ -281,7 +281,7 @@ export async function markMessageAsRead(
 export async function getMediaUrl(mediaId: string): Promise<string> {
   try {
     const response = await axios.get(
-      `${config.whatsappApiVersion}/${mediaId}`,
+      `https://graph.facebook.com/${config.whatsappApiVersion}/${mediaId}`,
       {
         headers: {
           Authorization: `Bearer ${config.whatsappAccessToken}`,
