@@ -130,7 +130,6 @@ const bookingSchema = new Schema<IBooking>(
 bookingSchema.index({ shop_id: 1, date: 1, status: 1 });
 bookingSchema.index({ barber_id: 1, date: 1, status: 1 });
 bookingSchema.index({ customer_phone: 1, status: 1 });
-bookingSchema.index({ booking_code: 1 });
 bookingSchema.index({ created_at: 1 });
 
 // Generate booking code before saving

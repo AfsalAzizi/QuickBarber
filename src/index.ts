@@ -90,9 +90,13 @@ process.on("SIGTERM", async () => {
   process.exit(0);
 });
 
-app.start().catch((error) => {
-  console.error("❌ Application failed to start:", error);
-  process.exit(1);
-});
-
-export default app;
+// Export a handler for Vercel
+export default async function handler(req: any, res: any) {
+  // Lazy-init a singleton server
+  if (!(global as any)._appStarted) {
+    await app.start();
+    (global as any)._appStarted = true;
+  }
+  // Delegate to Express
+  return (app as any).app(req, res);
+}
