@@ -11,14 +11,14 @@ import {
   ISettings,
   IWabaNumber,
   SessionIntent,
-} from "@/models";
+} from "../models";
 import {
   sendWhatsAppMessage,
   sendButtonMessage,
   ButtonOption,
 } from "./whatsappService";
 import { detectIntent } from "./intentDetection";
-import { WhatsAppMessage } from "@/types/express";
+import { WhatsAppMessage } from "../types/express";
 import moment from "moment-timezone";
 
 export interface ShopInfo {

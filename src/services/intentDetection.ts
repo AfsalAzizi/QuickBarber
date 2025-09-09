@@ -3,7 +3,7 @@ import {
   IServiceCatalog,
   IBarber,
   SessionIntent,
-} from "@/types/models";
+} from "../types/models";
 
 /**
  * Detect user intent from message content
