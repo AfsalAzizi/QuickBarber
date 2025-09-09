@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { AdminController } from "@/controllers/adminController";
-import { databaseMiddleware } from "@/middleware/databaseMiddleware";
+import { AdminController } from "../controllers/adminController";
+import { databaseMiddleware } from "../middleware/databaseMiddleware";
 
 const router = Router();
 

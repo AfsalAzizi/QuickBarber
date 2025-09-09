@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from "express";
-import { isDatabaseConnected, getDatabaseState } from "@/config/database";
-import { ApiResponse } from "@/types/express";
+import { getDatabaseState } from "../config/database";
+import { ApiResponse } from "../types/express";
 
 // Database connection middleware
 export const databaseMiddleware = (
@@ -8,7 +8,7 @@ export const databaseMiddleware = (
   res: Response,
   next: NextFunction
 ) => {
-  if (!isDatabaseConnected()) {
+  if (!getDatabaseState().connected) {
     const errorResponse: ApiResponse = {
       success: false,
       error: "Database connection not available",
@@ -26,7 +26,7 @@ export const optionalDatabaseMiddleware = (
   res: Response,
   next: NextFunction
 ) => {
-  req.databaseConnected = isDatabaseConnected();
+  req.databaseConnected = getDatabaseState().connected;
   req.databaseState = getDatabaseState();
   next();
 };
@@ -45,7 +45,7 @@ export const databaseHealthMiddleware = (
   }
 
   // For other routes, check if database is connected
-  if (!isDatabaseConnected()) {
+  if (!getDatabaseState().connected) {
     const errorResponse: ApiResponse = {
       success: false,
       error: "Database unavailable",

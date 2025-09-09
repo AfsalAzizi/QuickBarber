@@ -1,13 +1,13 @@
 import express, { Application } from "express";
 import { config, validateEnvironment } from "./config/environment";
-import { connectToDatabase } from "./config/database";
+import { connectToDatabase, disconnectFromDatabase } from "./config/database";
 
 import {
   setupMiddleware,
   errorHandlerMiddleware,
   notFoundMiddleware,
-} from "@/middleware";
-import routes from "@/routes";
+} from "./middleware";
+import routes from "./routes";
 
 class App {
   public app: Application;
@@ -51,22 +51,21 @@ class App {
 
   public async start(): Promise<void> {
     try {
-      // Validate environment variables
+      console.log("🚀 Starting server...");
+      console.log("Environment:", config.nodeEnv);
+      console.log("MongoDB URI configured:", !!process.env.MONGODB_URI);
+
       validateEnvironment();
       console.log("✅ Environment variables validated");
 
-      // Connect to database
+      console.log("🔄 Connecting to MongoDB...");
       await connectToDatabase();
-      console.log("✅ Database connected successfully");
+      console.log("✅ MongoDB connected, starting server...");
 
-      // Start server
       const port = config.port;
       this.app.listen(port, () => {
         console.log(`🚀 Server running on port ${port}`);
-        console.log(`📱 Environment: ${config.nodeEnv}`);
-        console.log(`🌐 API Base URL: http://localhost:${port}/api`);
-        console.log(`🔗 Health Check: http://localhost:${port}/api/health`);
-        console.log(`📞 Webhook: http://localhost:${port}/api/webhook`);
+        console.log(`📊 Health check: http://localhost:${port}/api/health`);
       });
     } catch (error) {
       console.error("❌ Failed to start server:", error);
@@ -79,17 +78,18 @@ class App {
 const app = new App();
 
 // Handle graceful shutdown
-process.on("SIGTERM", () => {
-  console.log("🔄 SIGTERM received, shutting down gracefully");
+process.on("SIGINT", async () => {
+  console.log("\n🛑 Received SIGINT, shutting down gracefully...");
+  await disconnectFromDatabase();
   process.exit(0);
 });
 
-process.on("SIGINT", () => {
-  console.log("🔄 SIGINT received, shutting down gracefully");
+process.on("SIGTERM", async () => {
+  console.log("\n🛑 Received SIGTERM, shutting down gracefully...");
+  await disconnectFromDatabase();
   process.exit(0);
 });
 
-// Start the application
 app.start().catch((error) => {
   console.error("❌ Application failed to start:", error);
   process.exit(1);

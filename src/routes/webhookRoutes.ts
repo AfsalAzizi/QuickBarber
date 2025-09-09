@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { WebhookController } from "@/controllers/webhookController";
-import { databaseMiddleware } from "@/middleware/databaseMiddleware";
+import { WebhookController } from "../controllers/webhookController";
+import { databaseMiddleware } from "../middleware/databaseMiddleware";
 
 const router = Router();
 
