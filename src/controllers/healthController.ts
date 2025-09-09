@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { getDatabaseState, isDatabaseConnected } from "@/config/database";
+import { getDatabaseState } from "../config/database";
 import {
   HealthCheckResponse,
   DatabaseHealthResponse,
@@ -49,7 +49,7 @@ export class HealthController {
       console.log("Database connection state:", connectionState);
 
       const response: DatabaseHealthResponse = {
-        connected: isDatabaseConnected(),
+        connected: getDatabaseState().connected,
         collections: [],
         models: [],
         environment: {
@@ -59,7 +59,7 @@ export class HealthController {
         timestamp: new Date().toISOString(),
       };
 
-      if (isDatabaseConnected()) {
+      if (getDatabaseState().connected) {
         try {
           // Test a simple query
           console.log("Testing simple query...");
