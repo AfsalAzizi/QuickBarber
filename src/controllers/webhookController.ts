@@ -37,21 +37,13 @@ export class WebhookController {
         JSON.stringify(req.body, null, 2)
       );
 
-      // Respond immediately to prevent timeout
-      const response: ApiResponse = {
-        success: true,
-        message: "Webhook received successfully",
-      };
-      res.status(200).json(response);
-
-      // Process in background
-      setImmediate(async () => {
-        try {
-          await WebhookController.processWebhookData(req.body);
-        } catch (error) {
-          console.error("Background processing error:", error);
-        }
-      });
+      try {
+        await WebhookController.processWebhookData(req.body);
+        res.status(200).json({ success: true });
+      } catch (err) {
+        console.error("Processing error:", err);
+        res.status(500).json({ success: false, error: "Processing failed" });
+      }
     } catch (error) {
       console.error("Error processing webhook:", error);
       const errorResponse: ApiResponse = {
