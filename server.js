@@ -46,11 +46,7 @@ async function connectToDatabase() {
         });
 
         // Connection with serverless-friendly options
-        await mongoose.connect(process.env.MONGODB_URI, {
-            serverSelectionTimeoutMS: 10000, // 10 second timeout
-            bufferCommands: false, // Disable mongoose buffering
-            bufferMaxEntries: 0, // Disable mongoose buffering
-        });
+        await mongoose.connect(process.env.MONGODB_URI);
 
         console.log('✅ Connected to MongoDB successfully');
 
