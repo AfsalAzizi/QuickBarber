@@ -28,6 +28,15 @@ router.get("/error-logs", AdminController.listErrorLogs);
 // Delete all bookings
 router.delete("/bookings", AdminController.deleteAllBookings);
 
+// List barbers for a shop (defaults to active=true)
+router.get("/barbers", AdminController.listBarbers);
+
+// Update a barber (by barberId) with query shop_id
+router.patch("/barbers/:barberId", AdminController.updateBarber);
+
+// Get shop settings and barbers
+router.get("/shop-summary", AdminController.getShopSummary);
+
 // Clear all data (nuclear option)
 router.delete("/clear-all", AdminController.clearAllData);
 

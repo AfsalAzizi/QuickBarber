@@ -738,7 +738,7 @@ async function showTimePeriodOptions(
       allowEvening = false;
       allowLater = true;
     } else if (tzNow.isSameOrAfter(eightThirty)) {
-      // From 8:30 PM onwards: only immediate
+      // From 8:30 PM onwards: only immediate; immediate generation starts at >= 8 PM
       allowEvening = false;
       allowLater = false;
     } else {
@@ -1245,9 +1245,21 @@ async function getAvailableTimeSlots(
 
     switch (timePeriod) {
       case "immediate":
-        // Start soon (15 min buffer), end at shop close so we can propose next 3 slots
-        startTime = currentTime.clone().add(15, "minutes");
+        // Start soon (15 min buffer). After 8:30 PM, show only Immediate, but
+        // generate from max(now+15m, 8:00 PM) to include late-evening grid.
         {
+          const nowPlus = currentTime.clone().add(15, "minutes");
+          const eightPM = currentTime.clone().hour(20).minute(0).seconds(0);
+          const eightThirty = currentTime
+            .clone()
+            .hour(20)
+            .minute(30)
+            .seconds(0);
+          startTime = nowPlus.isAfter(eightThirty)
+            ? nowPlus.isAfter(eightPM)
+              ? nowPlus
+              : eightPM
+            : nowPlus;
           const [closeHour, closeMinute] = shopInfo.settings.close_time
             .split(":")
             .map(Number);

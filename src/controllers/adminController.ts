@@ -11,6 +11,115 @@ import {
 import { ApiResponse } from "../types/express";
 
 export class AdminController {
+  // List barbers for a shop
+  static async listBarbers(req: Request, res: Response): Promise<void> {
+    try {
+      const { shop_id, active } = req.query as Record<string, string>;
+      if (!shop_id) {
+        res.status(400).json({ success: false, error: "shop_id is required" });
+        return;
+      }
+
+      const query: any = { shop_id };
+      if (typeof active !== "undefined") {
+        query.active = active === "true";
+      } else {
+        // default to active barbers only
+        query.active = true;
+      }
+
+      const barbers = await Barber.find(query).sort({ sort_order: 1 }).lean();
+      res.status(200).json({ success: true, data: barbers });
+    } catch (error: unknown) {
+      console.error("Error listing barbers:", error);
+      res.status(500).json({
+        success: false,
+        error: "Failed to list barbers",
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  // Update a barber (name, active, and any extra fields provided)
+  static async updateBarber(req: Request, res: Response): Promise<void> {
+    try {
+      const { barberId } = req.params as { barberId: string };
+      const { shop_id } = req.query as Record<string, string>;
+      if (!shop_id || !barberId) {
+        res
+          .status(400)
+          .json({ success: false, error: "shop_id and barberId are required" });
+        return;
+      }
+
+      const payload = req.body as Record<string, any>;
+      if (!payload || typeof payload !== "object") {
+        res
+          .status(400)
+          .json({ success: false, error: "Request body must be an object" });
+        return;
+      }
+
+      // Allow updating name and active, and any additional provided fields
+      const toSet: Record<string, any> = {};
+      for (const [key, value] of Object.entries(payload)) {
+        if (key === "barber_id" || key === "shop_id" || key === "_id") continue;
+        toSet[key] = value;
+      }
+
+      const updated = await Barber.findOneAndUpdate(
+        { shop_id, barber_id: barberId },
+        { $set: toSet },
+        { new: true }
+      ).lean();
+
+      if (!updated) {
+        res.status(404).json({ success: false, error: "Barber not found" });
+        return;
+      }
+
+      res.status(200).json({ success: true, data: updated });
+    } catch (error: unknown) {
+      console.error("Error updating barber:", error);
+      res.status(500).json({
+        success: false,
+        error: "Failed to update barber",
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  // Get shop settings and barbers by shop_id
+  static async getShopSummary(req: Request, res: Response): Promise<void> {
+    try {
+      const { shop_id, include_inactive } = req.query as Record<string, string>;
+      if (!shop_id) {
+        res.status(400).json({ success: false, error: "shop_id is required" });
+        return;
+      }
+
+      const settings = await Settings.findOne({ shop_id }).lean();
+      if (!settings) {
+        res.status(404).json({ success: false, error: "Settings not found" });
+        return;
+      }
+
+      const barberQuery: any = { shop_id };
+      if (include_inactive !== "true") barberQuery.active = true;
+      const barbers = await Barber.find(barberQuery)
+        .sort({ sort_order: 1 })
+        .lean();
+
+      res.status(200).json({ success: true, data: { settings, barbers } });
+    } catch (error: unknown) {
+      console.error("Error getting shop summary:", error);
+      res.status(500).json({
+        success: false,
+        error: "Failed to get shop summary",
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
   // List error logs with optional filters
   static async listErrorLogs(req: Request, res: Response): Promise<void> {
     try {
@@ -74,8 +183,12 @@ export class AdminController {
         string
       >;
 
-      const query: any = {};
-      if (shop_id) query.shop_id = shop_id;
+      if (!shop_id) {
+        res.status(400).json({ success: false, error: "shop_id is required" });
+        return;
+      }
+
+      const query: any = { shop_id };
       if (barber_id) query.barber_id = barber_id;
       if (status) query.status = status;
 
