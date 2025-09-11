@@ -1137,32 +1137,40 @@ async function getAvailableTimeSlots(
 
     switch (timePeriod) {
       case "immediate":
-        startTime = currentTime.clone().add(15, "minutes"); // 15 min buffer
-        endTime = currentTime.clone().add(2, "hours");
+        // Start soon (15 min buffer), end at shop close so we can propose next 3 slots
+        startTime = currentTime.clone().add(15, "minutes");
+        {
+          const [closeHour, closeMinute] = shopInfo.settings.close_time
+            .split(":")
+            .map(Number);
+          endTime = currentTime
+            .clone()
+            .hour(closeHour)
+            .minute(closeMinute)
+            .seconds(0);
+        }
         break;
       case "evening":
-        if (
-          !shopInfo.settings.evening_start ||
-          shopInfo.settings.evening_start.trim() === ""
-        ) {
-          console.log(
-            "Evening time period not available: evening_start not configured"
-          );
-          return [];
+        {
+          const eveningStr =
+            shopInfo.settings.evening_start &&
+            shopInfo.settings.evening_start.trim() !== ""
+              ? shopInfo.settings.evening_start
+              : "18:00";
+          const [eveningHour, eveningMinute] = eveningStr
+            .split(":")
+            .map(Number);
+          startTime = currentTime
+            .clone()
+            .hour(eveningHour)
+            .minute(eveningMinute)
+            .seconds(0);
+          endTime = currentTime
+            .clone()
+            .hour(shopInfo.settings.close_time.split(":")[0])
+            .minute(shopInfo.settings.close_time.split(":")[1])
+            .seconds(0);
         }
-        const [eveningHour, eveningMinute] = shopInfo.settings.evening_start
-          .split(":")
-          .map(Number);
-        startTime = currentTime
-          .clone()
-          .hour(eveningHour)
-          .minute(eveningMinute)
-          .seconds(0);
-        endTime = currentTime
-          .clone()
-          .hour(shopInfo.settings.close_time.split(":")[0])
-          .minute(shopInfo.settings.close_time.split(":")[1])
-          .seconds(0);
         break;
       case "later_today":
         startTime = currentTime.clone().add(30, "minutes"); // 30 min buffer
