@@ -10,6 +10,7 @@ import {
   IBarber,
   ISettings,
   IWabaNumber,
+  IBooking,
   SessionIntent,
 } from "../models";
 import {
@@ -1184,14 +1185,351 @@ function getTimePeriodLabel(timePeriod: string): string {
   return labels[timePeriod] || timePeriod;
 }
 
+/**
+ * Get time slot details based on slot ID
+ */
+async function getTimeSlotDetails(
+  session: ISession,
+  shopInfo: ShopInfo,
+  slotId: string
+): Promise<{ startTime: string; endTime: string; date: Date } | null> {
+  try {
+    if (!session.selected_barber_id || !session.time_period_key) {
+      console.log("Missing required session data for time slot details");
+      return null;
+    }
+
+    // Get service duration
+    const service = await ServiceCatalog.findOne({
+      service_key: session.selected_service,
+      is_active: true,
+    }).lean<IServiceCatalog | null>();
+
+    if (!service) {
+      console.log("Service not found for time slot details");
+      return null;
+    }
+
+    const serviceDuration = service.duration_min;
+    const slotInterval = shopInfo.settings.slot_interval_min;
+    const currentTime = moment().tz(shopInfo.timezone);
+
+    // Define time window based on period
+    let startTime: moment.Moment;
+    let endTime: moment.Moment;
+
+    switch (session.time_period_key) {
+      case "immediate":
+        startTime = currentTime.clone().add(15, "minutes"); // 15 min buffer
+        endTime = currentTime.clone().add(2, "hours");
+        break;
+      case "evening":
+        if (
+          !shopInfo.settings.evening_start ||
+          shopInfo.settings.evening_start.trim() === ""
+        ) {
+          console.log(
+            "Evening time period not available: evening_start not configured"
+          );
+          return null;
+        }
+        const [eveningHour, eveningMinute] = shopInfo.settings.evening_start
+          .split(":")
+          .map(Number);
+        startTime = currentTime
+          .clone()
+          .hour(eveningHour)
+          .minute(eveningMinute)
+          .seconds(0);
+        endTime = currentTime
+          .clone()
+          .hour(shopInfo.settings.close_time.split(":")[0])
+          .minute(shopInfo.settings.close_time.split(":")[1])
+          .seconds(0);
+        break;
+      case "later_today":
+        startTime = currentTime.clone().add(30, "minutes"); // 30 min buffer
+        const [closeHour, closeMinute] = shopInfo.settings.close_time
+          .split(":")
+          .map(Number);
+        endTime = currentTime
+          .clone()
+          .hour(closeHour)
+          .minute(closeMinute)
+          .seconds(0);
+        break;
+      default:
+        console.log("Unknown time period:", session.time_period_key);
+        return null;
+    }
+
+    // Generate potential time slots
+    const potentialSlots = generateTimeSlots(
+      startTime,
+      endTime,
+      slotInterval,
+      serviceDuration
+    );
+
+    // Get existing bookings for today
+    const today = startTime.format("YYYY-MM-DD");
+    const existingBookings = await Booking.find({
+      shop_id: shopInfo.shop_id,
+      barber_id: session.selected_barber_id,
+      date: {
+        $gte: new Date(today + "T00:00:00.000Z"),
+        $lt: new Date(today + "T23:59:59.999Z"),
+      },
+      status: { $in: ["pending", "confirmed"] },
+    }).lean();
+
+    // Find the available slot by index
+    const slotIndex = parseInt(slotId) - 1;
+    let availableSlotIndex = 0;
+
+    for (let i = 0; i < potentialSlots.length; i++) {
+      const slot = potentialSlots[i];
+      const slotStart = moment(slot.start);
+      const slotEnd = moment(slot.end);
+
+      const hasConflict = existingBookings.some((booking) => {
+        const bookingStart = moment(booking.start_time, "HH:mm");
+        const bookingEnd = moment(booking.end_time, "HH:mm");
+
+        // Check for time overlap
+        return slotStart.isBefore(bookingEnd) && slotEnd.isAfter(bookingStart);
+      });
+
+      if (!hasConflict) {
+        if (availableSlotIndex === slotIndex) {
+          return {
+            startTime: slotStart.format("HH:mm"),
+            endTime: slotEnd.format("HH:mm"),
+            date: new Date(today + "T00:00:00.000Z"),
+          };
+        }
+        availableSlotIndex++;
+      }
+    }
+
+    console.log("Time slot not found for slot ID:", slotId);
+    return null;
+  } catch (error) {
+    console.error("Error getting time slot details:", error);
+    return null;
+  }
+}
+
+/**
+ * Create a new booking
+ */
+async function createBooking(
+  session: ISession,
+  shopInfo: ShopInfo,
+  timeSlot: { startTime: string; endTime: string; date: Date },
+  service: IServiceCatalog
+): Promise<IBooking | null> {
+  try {
+    // Generate unique booking ID
+    const bookingId = generateBookingId(shopInfo.shop_id);
+
+    // Create booking object
+    const booking = new Booking({
+      booking_id: bookingId,
+      shop_id: shopInfo.shop_id,
+      date: timeSlot.date,
+      start_time: timeSlot.startTime,
+      end_time: timeSlot.endTime,
+      service_key: session.selected_service,
+      customer_phone: session.user_phone,
+      barber_id: session.selected_barber_id,
+      status: "pending",
+      customer_name: null, // Could be extracted from WhatsApp profile if available
+      price: service.default_price,
+      payment_status: "pending",
+      reminder_sent: false,
+      confirmation_sent: false,
+      wa_message_id: null,
+      wa_context_id: null,
+    });
+
+    await booking.save();
+    console.log("Booking saved successfully:", booking.booking_id);
+    return booking;
+  } catch (error) {
+    console.error("Error creating booking:", error);
+    return null;
+  }
+}
+
+/**
+ * Generate unique booking ID
+ */
+function generateBookingId(shopId: string): string {
+  const timestamp = Date.now().toString();
+  const random = Math.floor(Math.random() * 10000)
+    .toString()
+    .padStart(4, "0");
+  const shopPrefix = shopId.substring(0, 2).toUpperCase();
+  return `${shopPrefix}${timestamp}${random}`;
+}
+
+/**
+ * Send booking confirmation message
+ */
+async function sendBookingConfirmation(
+  session: ISession,
+  shopInfo: ShopInfo,
+  booking: IBooking,
+  service: IServiceCatalog,
+  timeSlot: { startTime: string; endTime: string; date: Date }
+): Promise<void> {
+  try {
+    const bookingDate = moment(timeSlot.date).format("MMMM DD, YYYY");
+    const startTimeFormatted = moment(timeSlot.startTime, "HH:mm").format(
+      "h:mm A"
+    );
+    const endTimeFormatted = moment(timeSlot.endTime, "HH:mm").format("h:mm A");
+
+    const confirmationMessage = `🎉 *Booking Confirmed!*
+
+*Booking Details:*
+📅 Date: ${bookingDate}
+⏰ Time: ${startTimeFormatted} - ${endTimeFormatted}
+💇‍♂️ Barber: ${session.selected_barber_name}
+✂️ Service: ${service.label}
+💰 Price: ₹${service.default_price}
+📱 Booking Code: ${booking.booking_code}
+
+*Shop Details:*
+🏪 ${shopInfo.settings.shop_name}
+📞 ${shopInfo.display_phone_number}
+
+Your appointment has been successfully booked! Please arrive 5 minutes before your scheduled time.
+
+Thank you for choosing ${shopInfo.settings.shop_name}! 🙏`;
+
+    await sendWhatsAppMessage(session.user_phone, confirmationMessage);
+
+    // Update booking to mark confirmation as sent
+    await Booking.findOneAndUpdate(
+      { booking_id: booking.booking_id },
+      { confirmation_sent: true }
+    );
+
+    console.log("Booking confirmation message sent successfully");
+  } catch (error) {
+    console.error("Error sending booking confirmation:", error);
+  }
+}
+
 // Placeholder functions for other intents
 async function handleSpecificTimeSelection(
   messageContent: string,
   session: ISession,
   shopInfo: ShopInfo
 ): Promise<void> {
-  // Implementation for specific time selection
-  console.log("Handling specific time selection:", messageContent);
+  try {
+    console.log("Handling specific time selection:", messageContent);
+    console.log("Session data:", {
+      selected_service: session.selected_service,
+      selected_barber_id: session.selected_barber_id,
+      selected_barber_name: session.selected_barber_name,
+      time_period_key: session.time_period_key,
+    });
+
+    // Extract slot ID from message
+    let slotId = messageContent;
+    if (messageContent.startsWith("slot_")) {
+      slotId = messageContent.replace("slot_", "");
+    }
+
+    console.log("Extracted slot ID:", slotId);
+
+    // Get the actual time slot details
+    const timeSlot = await getTimeSlotDetails(session, shopInfo, slotId);
+
+    if (!timeSlot) {
+      console.log("Time slot not found, sending error message");
+      await sendWhatsAppMessage(
+        session.user_phone,
+        "Sorry, that time slot is no longer available. Please select another time."
+      );
+      return;
+    }
+
+    console.log("Found time slot:", timeSlot);
+
+    // Get service details for pricing and duration
+    const service = await ServiceCatalog.findOne({
+      service_key: session.selected_service,
+      is_active: true,
+    }).lean<IServiceCatalog | null>();
+
+    if (!service) {
+      console.log("Service not found");
+      await sendWhatsAppMessage(
+        session.user_phone,
+        "Sorry, there was an error processing your booking. Please try again."
+      );
+      return;
+    }
+
+    // Create the booking
+    const booking = await createBooking(session, shopInfo, timeSlot, service);
+
+    if (!booking) {
+      console.log("Failed to create booking");
+      await sendWhatsAppMessage(
+        session.user_phone,
+        "Sorry, there was an error creating your booking. Please try again."
+      );
+      return;
+    }
+
+    console.log("Booking created successfully:", booking.booking_id);
+
+    // Update session with booking details
+    session.booking_id = booking.booking_id;
+    session.booking_code = booking.booking_code;
+    session.intent = "booking_confirmed";
+    session.phase = "completed";
+    session.updated_at_iso = new Date();
+    await session.save();
+
+    console.log("Session updated with booking details");
+
+    // Send confirmation message
+    await sendBookingConfirmation(
+      session,
+      shopInfo,
+      booking,
+      service,
+      timeSlot
+    );
+
+    console.log("Booking confirmation sent successfully");
+  } catch (error) {
+    console.error("Error handling specific time selection:", error);
+    console.error(
+      "Error details:",
+      error instanceof Error ? error.message : String(error)
+    );
+    console.error(
+      "Stack trace:",
+      error instanceof Error ? error.stack : "No stack trace"
+    );
+
+    // Send error message to user
+    try {
+      await sendWhatsAppMessage(
+        session.user_phone,
+        "Sorry, there was an error processing your booking. Please try again."
+      );
+    } catch (sendError) {
+      console.error("Error sending error message to user:", sendError);
+    }
+  }
 }
 
 async function handleListServices(

@@ -60,6 +60,7 @@ const sessionSchema = new Schema<ISession>(
         "select_barber",
         "select_time_period",
         "select_specific_time",
+        "booking_confirmed",
       ],
       default: null,
     },

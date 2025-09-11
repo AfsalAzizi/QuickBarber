@@ -41,7 +41,8 @@ export type SessionIntent =
   | "select_service"
   | "select_barber"
   | "select_time_period"
-  | "select_specific_time";
+  | "select_specific_time"
+  | "booking_confirmed";
 
 export interface ISession extends BaseDocument {
   user_phone: string;
