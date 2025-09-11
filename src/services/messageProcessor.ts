@@ -1480,7 +1480,12 @@ async function getTimeSlotDetails(
           return {
             startTime: slotStart.format("HH:mm"),
             endTime: slotEnd.format("HH:mm"),
-            date: new Date(today + "T00:00:00.000Z"),
+            date: getShopDayBounds(slotStart, shopInfo.timezone).start,
+          };
+          return {
+            startTime: slotStart.format("HH:mm"),
+            endTime: slotEnd.format("HH:mm"),
+            date: getShopDayBounds(slotStart, shopInfo.timezone).start,
           };
         }
         availableSlotIndex++;
