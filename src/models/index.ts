@@ -5,6 +5,7 @@ export { WabaNumber } from "./WabaNumber";
 export { ServiceCatalog } from "./ServiceCatalog";
 export { Barber } from "./Barber";
 export { Booking } from "./Booking";
+export { ErrorLog } from "./ErrorLog";
 
 // Export types
 export type {

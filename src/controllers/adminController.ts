@@ -6,10 +6,84 @@ import {
   ServiceCatalog,
   Barber,
   Booking,
+  ErrorLog,
 } from "../models";
 import { ApiResponse } from "../types/express";
 
 export class AdminController {
+  // List error logs with optional filters
+  static async listErrorLogs(req: Request, res: Response): Promise<void> {
+    try {
+      const { user_phone, shop_id, limit } = req.query as Record<
+        string,
+        string
+      >;
+
+      const query: any = {};
+      if (user_phone) query.user_phone = user_phone;
+      if (shop_id) query.shop_id = shop_id;
+
+      const parsedLimit = Math.min(Math.max(parseInt(limit || "100"), 1), 500);
+
+      const logs = await ErrorLog.find(query)
+        .sort({ createdAt: -1 })
+        .limit(parsedLimit)
+        .lean();
+
+      const response: ApiResponse = {
+        success: true,
+        data: logs,
+      };
+      res.status(200).json(response);
+    } catch (error: unknown) {
+      console.error("Error listing error logs:", error);
+      const errorResponse: ApiResponse = {
+        success: false,
+        error: "Failed to list error logs",
+        message: error instanceof Error ? error.message : String(error),
+      };
+      res.status(500).json(errorResponse);
+    }
+  }
+  // List bookings with optional filters
+  static async listBookings(req: Request, res: Response): Promise<void> {
+    try {
+      const { shop_id, barber_id, from, to, status } = req.query as Record<
+        string,
+        string
+      >;
+
+      const query: any = {};
+      if (shop_id) query.shop_id = shop_id;
+      if (barber_id) query.barber_id = barber_id;
+      if (status) query.status = status;
+
+      if (from || to) {
+        const dateQuery: any = {};
+        if (from) dateQuery.$gte = new Date(from + "T00:00:00.000Z");
+        if (to) dateQuery.$lte = new Date(to + "T23:59:59.999Z");
+        query.date = dateQuery;
+      }
+
+      const bookings = await Booking.find(query)
+        .sort({ date: -1, start_time: 1 })
+        .lean();
+
+      const response: ApiResponse = {
+        success: true,
+        data: bookings,
+      };
+      res.status(200).json(response);
+    } catch (error: unknown) {
+      console.error("Error listing bookings:", error);
+      const errorResponse: ApiResponse = {
+        success: false,
+        error: "Failed to list bookings",
+        message: error instanceof Error ? error.message : String(error),
+      };
+      res.status(500).json(errorResponse);
+    }
+  }
   // Clear all sessions
   static async clearAllSessions(req: Request, res: Response): Promise<void> {
     try {

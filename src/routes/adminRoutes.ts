@@ -19,6 +19,12 @@ router.delete("/sessions/shop/:shopId", AdminController.clearShopSessions);
 // Get session statistics
 router.get("/sessions/stats", AdminController.getSessionStats);
 
+// List bookings with optional filters
+router.get("/bookings", AdminController.listBookings);
+
+// List error logs with optional filters
+router.get("/error-logs", AdminController.listErrorLogs);
+
 // Clear all data (nuclear option)
 router.delete("/clear-all", AdminController.clearAllData);
 

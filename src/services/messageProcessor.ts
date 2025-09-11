@@ -13,6 +13,7 @@ import {
   IBooking,
   SessionIntent,
 } from "../models";
+import { ErrorLog } from "../models";
 import {
   sendWhatsAppMessage,
   sendButtonMessage,
@@ -28,6 +29,56 @@ export interface ShopInfo {
   display_phone_number: string;
   timezone: string;
   settings: any;
+}
+
+/**
+ * Close the session gracefully and notify the user
+ */
+async function closeSessionWithError(
+  session: ISession,
+  userMessage: string = "Sorry, something went wrong and this session has been closed. Reply to start again."
+): Promise<void> {
+  try {
+    await sendWhatsAppMessage(session.user_phone, userMessage);
+  } catch (err) {
+    console.error("Error sending error message to user:", err);
+  }
+
+  try {
+    // Attempt to persist an error log if a prior catch attached details
+    try {
+      const errorContext = (session as any).context_data?.last_error_context;
+      if (errorContext) {
+        await ErrorLog.create({
+          ...errorContext,
+          session: {
+            id: session._id,
+            shop_id: session.shop_id,
+            user_phone: session.user_phone,
+            intent: session.intent,
+            phase: session.phase,
+            selected_service: (session as any).selected_service,
+            selected_barber_id: (session as any).selected_barber_id,
+            time_period_key: (session as any).time_period_key,
+          },
+          shop_id: session.shop_id,
+          user_phone: session.user_phone,
+          intent: session.intent,
+          phase: session.phase,
+        });
+      }
+    } catch (logErr) {
+      console.error("Failed to write ErrorLog:", logErr);
+    }
+
+    session.is_active = false;
+    session.phase = "completed";
+    (session as any).intent = null;
+    session.updated_at_iso = new Date();
+    await session.save();
+  } catch (err) {
+    console.error("Error closing session after error:", err);
+  }
 }
 
 export interface MessageMetadata {
@@ -90,6 +141,19 @@ export async function processIncomingMessage(
         metadata.phone_number_id
       );
       console.log("Session loaded:", session._id);
+
+      // Persist interactive button title (if present) for downstream handlers
+      if (message.type === "interactive") {
+        const title =
+          message.interactive?.button_reply?.title ||
+          message.interactive?.list_reply?.title ||
+          null;
+        if (title) {
+          session.context_data = session.context_data || {};
+          (session.context_data as any).last_button_title = title;
+          await session.save();
+        }
+      }
 
       // Detect intent
       const intent = detectIntent(messageContent, session);
@@ -1037,6 +1101,10 @@ async function handleTimePeriodSelection(
     await sendButtonMessage(session.user_phone, slotMessage, slotButtons);
   } catch (error) {
     console.error("Error handling time period selection:", error);
+    await closeSessionWithError(
+      session,
+      "Sorry, an error occurred and this session has been closed. Reply to start again."
+    );
   }
 }
 
@@ -1518,6 +1586,8 @@ async function handleSpecificTimeSelection(
   session: ISession,
   shopInfo: ShopInfo
 ): Promise<void> {
+  // Make slotId visible to catch scope
+  let slotId: string | null = null;
   try {
     console.log("Handling specific time selection:", messageContent);
     console.log("Session data:", {
@@ -1528,15 +1598,56 @@ async function handleSpecificTimeSelection(
     });
 
     // Extract slot ID from message
-    let slotId = messageContent;
+    slotId = messageContent;
     if (messageContent.startsWith("slot_")) {
       slotId = messageContent.replace("slot_", "");
     }
 
     console.log("Extracted slot ID:", slotId);
 
-    // Get the actual time slot details
-    const timeSlot = await getTimeSlotDetails(session, shopInfo, slotId);
+    // Derive time from last button title if available
+    let timeSlot = null as null | {
+      startTime: string;
+      endTime: string;
+      date: Date;
+    };
+    const lastTitle = (session.context_data as any)?.last_button_title as
+      | string
+      | undefined;
+    if (lastTitle) {
+      const parsed = moment(lastTitle, ["h:mm A", "h A", "HH:mm"], true);
+      if (parsed.isValid()) {
+        const service = await ServiceCatalog.findOne({
+          service_key: session.selected_service,
+          is_active: true,
+        }).lean<IServiceCatalog | null>();
+        if (!service) {
+          console.log("Service not found while parsing last_button_title");
+          await sendWhatsAppMessage(
+            session.user_phone,
+            "Sorry, there was an error processing your booking. Please try again."
+          );
+          return;
+        }
+        const startTimeStr = parsed.format("HH:mm");
+        const endTimeStr = parsed
+          .clone()
+          .add(service.duration_min, "minutes")
+          .format("HH:mm");
+        const today = moment().tz(shopInfo.timezone).format("YYYY-MM-DD");
+        timeSlot = {
+          startTime: startTimeStr,
+          endTime: endTimeStr,
+          date: new Date(today + "T00:00:00.000Z"),
+        };
+      }
+    }
+
+    // Fallback to generation if we could not parse the title (e.g., manual input)
+    if (!timeSlot) {
+      // Get the actual time slot details using recomputation fallback
+      timeSlot = await getTimeSlotDetails(session, shopInfo, slotId);
+    }
 
     if (!timeSlot) {
       console.log("Time slot not found, sending error message");
@@ -1640,24 +1751,24 @@ async function handleSpecificTimeSelection(
     console.log("Booking confirmation sent successfully");
   } catch (error) {
     console.error("Error handling specific time selection:", error);
-    console.error(
-      "Error details:",
-      error instanceof Error ? error.message : String(error)
-    );
-    console.error(
-      "Stack trace:",
-      error instanceof Error ? error.stack : "No stack trace"
-    );
-
-    // Send error message to user
+    // Attach error details for ErrorLog
     try {
-      await sendWhatsAppMessage(
-        session.user_phone,
-        "Sorry, there was an error processing your booking. Please try again."
-      );
-    } catch (sendError) {
-      console.error("Error sending error message to user:", sendError);
-    }
+      session.context_data = session.context_data || {};
+      (session.context_data as any).last_error_context = {
+        name: error instanceof Error ? error.name : undefined,
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        context: {
+          where: "handleSpecificTimeSelection",
+          slotId,
+        },
+      };
+      await session.save();
+    } catch {}
+    await closeSessionWithError(
+      session,
+      "Sorry, an error occurred and this session has been closed. Reply to start again."
+    );
   }
 }
 
