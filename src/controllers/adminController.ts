@@ -120,6 +120,49 @@ export class AdminController {
       });
     }
   }
+
+  // Update shop name
+  static async updateShopName(req: Request, res: Response): Promise<void> {
+    try {
+      const { shop_id } = req.query as Record<string, string>;
+      const { shop_name } = req.body as { shop_name?: string };
+
+      if (!shop_id) {
+        res.status(400).json({ success: false, error: "shop_id is required" });
+        return;
+      }
+      if (
+        !shop_name ||
+        typeof shop_name !== "string" ||
+        shop_name.trim() === ""
+      ) {
+        res
+          .status(400)
+          .json({ success: false, error: "shop_name is required" });
+        return;
+      }
+
+      const updated = await Settings.findOneAndUpdate(
+        { shop_id },
+        { $set: { shop_name: shop_name.trim() } },
+        { new: true }
+      ).lean();
+
+      if (!updated) {
+        res.status(404).json({ success: false, error: "Settings not found" });
+        return;
+      }
+
+      res.status(200).json({ success: true, data: updated });
+    } catch (error: unknown) {
+      console.error("Error updating shop name:", error);
+      res.status(500).json({
+        success: false,
+        error: "Failed to update shop name",
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
   // List error logs with optional filters
   static async listErrorLogs(req: Request, res: Response): Promise<void> {
     try {

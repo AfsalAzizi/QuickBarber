@@ -37,6 +37,9 @@ router.patch("/barbers/:barberId", AdminController.updateBarber);
 // Get shop settings and barbers
 router.get("/shop-summary", AdminController.getShopSummary);
 
+// Update shop name
+router.patch("/shop-name", AdminController.updateShopName);
+
 // Clear all data (nuclear option)
 router.delete("/clear-all", AdminController.clearAllData);
 
