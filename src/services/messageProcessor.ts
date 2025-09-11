@@ -1088,13 +1088,13 @@ async function handleTimePeriodSelection(
     // Persist slot map in session to avoid recomputation on selection
     session.context_data = session.context_data || {};
     session.context_data.slot_map = timeSlots.map((slot) => ({
-      id: `slot_${slot.id}`,
+      id: slot.id, // keep single prefix e.g., "slot_3"
       title: slot.title,
     }));
     await session.save();
 
     const slotButtons: ButtonOption[] = timeSlots.map((slot) => ({
-      id: `slot_${slot.id}`,
+      id: slot.id, // keep single prefix e.g., "slot_3"
       title: slot.title,
     }));
 
@@ -1299,7 +1299,7 @@ async function getTimeSlotDetails(
       session as any
     ).context_data?.slot_map;
     if (slotMap && Array.isArray(slotMap) && slotMap.length > 0) {
-      const selected = slotMap.find((s) => s.id === `slot_${slotId}`);
+      const selected = slotMap.find((s) => s.id === `${slotId}`);
       if (selected) {
         // Derive HH:mm from the button title if it's a time like "1:11 PM"
         const parsed = moment(selected.title, ["h:mm A", "h A", "HH:mm"], true);
