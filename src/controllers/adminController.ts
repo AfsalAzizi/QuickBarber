@@ -10,6 +10,7 @@ import {
 } from "../models";
 import { sendWhatsAppMessage } from "../services/whatsappService";
 import moment from "moment-timezone";
+import { ISettings, IBarber, IBooking } from "@/types/models";
 import { ApiResponse } from "../types/express";
 
 export class AdminController {
@@ -100,7 +101,9 @@ export class AdminController {
         return;
       }
 
-      const settings = await Settings.findOne({ shop_id }).lean();
+      const settings = await Settings.findOne({
+        shop_id,
+      }).lean<ISettings | null>();
       if (!settings) {
         res.status(404).json({ success: false, error: "Settings not found" });
         return;
@@ -172,23 +175,30 @@ export class AdminController {
       const { barberId } = req.params as { barberId: string };
       const { shop_id } = req.query as Record<string, string>;
       if (!shop_id || !barberId) {
-        res.status(400).json({ success: false, error: "shop_id and barberId are required" });
+        res
+          .status(400)
+          .json({ success: false, error: "shop_id and barberId are required" });
         return;
       }
 
-      const settings = await Settings.findOne({ shop_id }).lean();
+      const settings = (await Settings.findOne({
+        shop_id,
+      }).lean()) as ISettings | null;
       if (!settings) {
         res.status(404).json({ success: false, error: "Settings not found" });
         return;
       }
 
-      const barber = await Barber.findOne({ shop_id, barber_id: barberId }).lean();
+      const barber = await Barber.findOne({
+        shop_id,
+        barber_id: barberId,
+      }).lean<IBarber | null>();
       if (!barber) {
         res.status(404).json({ success: false, error: "Barber not found" });
         return;
       }
 
-      const nowTz = moment().tz(settings.time_zone || settings.timezone || "UTC");
+      const nowTz = moment().tz((settings as ISettings).time_zone);
       const today = nowTz.clone().startOf("day").toDate();
       const todayEnd = nowTz.clone().endOf("day").toDate();
       const nowHHmm = nowTz.format("HH:mm");
@@ -202,17 +212,23 @@ export class AdminController {
         start_time: { $gte: nowHHmm },
       })
         .sort({ date: 1, start_time: 1 })
-        .lean();
+        .lean<IBooking | null>();
 
       if (!next) {
-        res.status(404).json({ success: false, error: "No upcoming booking found for today" });
+        res.status(404).json({
+          success: false,
+          error: "No upcoming booking found for today",
+        });
         return;
       }
 
       const msg = `Good news — your appointment with ${barber.name} is ready. You can come anytime now. See you soon!`;
       await sendWhatsAppMessage(next.customer_phone, msg);
 
-      res.status(200).json({ success: true, data: { notified: next.customer_phone, booking_id: next.booking_id } });
+      res.status(200).json({
+        success: true,
+        data: { notified: next.customer_phone, booking_id: next.booking_id },
+      });
     } catch (error: unknown) {
       console.error("Error notifying next booking:", error);
       res.status(500).json({
