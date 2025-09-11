@@ -190,7 +190,8 @@ export function detectIntent(
     select_service: [],
     select_barber: [],
     select_time_period: [],
-    select_specific_time: []    booking_confirmed: [],
+    select_specific_time: [],
+    booking_confirmed: [],
   };
 
   // Check for exact matches first
