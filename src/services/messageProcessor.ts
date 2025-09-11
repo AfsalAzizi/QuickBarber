@@ -650,28 +650,18 @@ async function showTimePeriodOptions(
     console.log("Current time:", currentTime.format("YYYY-MM-DD HH:mm:ss"));
     console.log("Current hour:", currentHour);
 
-    // Check availability for different time periods
-    console.log("Checking immediate slots availability...");
-    const hasImmediate = await hasImmediateSlots(
-      session,
-      shopInfo,
-      currentTime
-    );
+    // Compute available slots per period to avoid mismatches
+    console.log("Computing available slots per period...");
+    const [immediateSlots, eveningSlots, laterTodaySlots] = await Promise.all([
+      getAvailableTimeSlots(session, shopInfo, "immediate"),
+      getAvailableTimeSlots(session, shopInfo, "evening"),
+      getAvailableTimeSlots(session, shopInfo, "later_today"),
+    ]);
 
-    console.log("Checking evening slots availability...");
-    const hasEvening = await hasEveningSlots(session, shopInfo, currentTime);
-
-    console.log("Checking later today slots availability...");
-    const hasLaterToday = await hasLaterTodaySlots(
-      session,
-      shopInfo,
-      currentTime
-    );
-
-    console.log("Availability check results:", {
-      hasImmediate,
-      hasEvening,
-      hasLaterToday,
+    console.log("Availability check results (counts):", {
+      immediate: immediateSlots.length,
+      evening: eveningSlots.length,
+      later_today: laterTodaySlots.length,
     });
 
     const timeMessage = `Perfect! You selected ${session.selected_barber_name}.
@@ -680,21 +670,21 @@ When would you like to book your appointment?`;
 
     const timeButtons: ButtonOption[] = [];
 
-    if (hasImmediate) {
+    if (immediateSlots.length > 0) {
       timeButtons.push({
         id: "time_immediate",
         title: "Immediate",
       });
     }
 
-    if (hasEvening) {
+    if (eveningSlots.length > 0) {
       timeButtons.push({
         id: "time_evening",
         title: "This evening",
       });
     }
 
-    if (hasLaterToday) {
+    if (laterTodaySlots.length > 0) {
       timeButtons.push({
         id: "time_later_today",
         title: "Later today",
@@ -754,7 +744,11 @@ async function hasImmediateSlots(
     // Parse shop hours
     const [startHour, startMinute] = settings.start_time.split(":").map(Number);
     const [closeHour, closeMinute] = settings.close_time.split(":").map(Number);
-    const [eveningHour, eveningMinute] = settings.evening_start
+    const [eveningHour, eveningMinute] = (
+      settings.evening_start && settings.evening_start.trim() !== ""
+        ? settings.evening_start
+        : "18:00"
+    )
       .split(":")
       .map(Number);
 
