@@ -32,6 +32,18 @@ export interface ShopInfo {
 }
 
 /**
+ * Get start/end of day in the shop timezone for a reference moment
+ */
+function getShopDayBounds(
+  ref: moment.Moment,
+  timezone: string
+): { start: Date; end: Date } {
+  const start = ref.clone().tz(timezone).startOf("day").toDate();
+  const end = ref.clone().tz(timezone).endOf("day").toDate();
+  return { start, end };
+}
+
+/**
  * Close the session gracefully and notify the user
  */
 async function closeSessionWithError(
@@ -963,13 +975,16 @@ async function checkTimeSlotAvailability(
     }
 
     // Check for existing bookings that conflict with these slots
-    const today = startTime.format("YYYY-MM-DD");
+    const { start: dayStart, end: dayEnd } = getShopDayBounds(
+      startTime,
+      shopInfo.timezone
+    );
     const existingBookings = await Booking.find({
       shop_id: shopInfo.shop_id,
       barber_id: session.selected_barber_id,
       date: {
-        $gte: new Date(today + "T00:00:00.000Z"),
-        $lt: new Date(today + "T23:59:59.999Z"),
+        $gte: dayStart,
+        $lte: dayEnd,
       },
       status: { $in: ["pending", "confirmed"] },
     }).lean();
@@ -1205,13 +1220,16 @@ async function getAvailableTimeSlots(
     }
 
     // Get existing bookings for today
-    const today = startTime.format("YYYY-MM-DD");
+    const { start: gStart, end: gEnd } = getShopDayBounds(
+      startTime,
+      shopInfo.timezone
+    );
     const existingBookings = await Booking.find({
       shop_id: shopInfo.shop_id,
       barber_id: session.selected_barber_id,
       date: {
-        $gte: new Date(today + "T00:00:00.000Z"),
-        $lt: new Date(today + "T23:59:59.999Z"),
+        $gte: gStart,
+        $lte: gEnd,
       },
       status: { $in: ["pending", "confirmed"] },
     }).lean();
@@ -1416,13 +1434,16 @@ async function getTimeSlotDetails(
     );
 
     // Get existing bookings for today
-    const today = startTime.format("YYYY-MM-DD");
+    const { start: sStart, end: sEnd } = getShopDayBounds(
+      startTime,
+      shopInfo.timezone
+    );
     const existingBookings = await Booking.find({
       shop_id: shopInfo.shop_id,
       barber_id: session.selected_barber_id,
       date: {
-        $gte: new Date(today + "T00:00:00.000Z"),
-        $lt: new Date(today + "T23:59:59.999Z"),
+        $gte: sStart,
+        $lte: sEnd,
       },
       status: { $in: ["pending", "confirmed"] },
     }).lean();
