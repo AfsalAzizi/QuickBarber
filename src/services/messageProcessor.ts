@@ -44,6 +44,29 @@ function getShopDayBounds(
 }
 
 /**
+ * Build a moment for HH:mm on the same calendar day as ref, in shop timezone
+ */
+function timeOnRefDay(
+  ref: moment.Moment,
+  hhmm: string,
+  timezone: string
+): moment.Moment {
+  const [h, m] = hhmm.split(":").map((n) => parseInt(n, 10));
+  return moment.tz(
+    {
+      year: ref.year(),
+      month: ref.month(),
+      date: ref.date(),
+      hour: h,
+      minute: m,
+      second: 0,
+      millisecond: 0,
+    },
+    timezone
+  );
+}
+
+/**
  * Close the session gracefully and notify the user
  */
 async function closeSessionWithError(
@@ -1252,11 +1275,13 @@ async function getAvailableTimeSlots(
     let cursor = roundUpToInterval(startTime.clone(), slotInterval);
     const dayEnd = endTime.clone();
 
-    // Precompute booking intervals
-    const bookedIntervals = existingBookings.map((b) => ({
-      start: moment(b.start_time, "HH:mm"),
-      end: moment(b.end_time, "HH:mm"),
-    }));
+    // Precompute booking intervals aligned to shop timezone and same day
+    const bookedIntervals = existingBookings
+      .map((b) => ({
+        start: timeOnRefDay(startTime, b.start_time, shopInfo.timezone),
+        end: timeOnRefDay(startTime, b.end_time, shopInfo.timezone),
+      }))
+      .sort((a, b) => a.start.valueOf() - b.start.valueOf());
 
     while (
       cursor.clone().add(serviceDuration, "minutes").isSameOrBefore(dayEnd) &&
