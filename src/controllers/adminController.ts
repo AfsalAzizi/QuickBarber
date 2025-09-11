@@ -198,7 +198,11 @@ export class AdminController {
         return;
       }
 
-      const nowTz = moment().tz((settings as ISettings).time_zone);
+      const tz =
+        (settings as ISettings).time_zone ||
+        (settings as any).timezone ||
+        "UTC";
+      const nowTz = moment().tz(tz);
       const today = nowTz.clone().startOf("day").toDate();
       const todayEnd = nowTz.clone().endOf("day").toDate();
       const nowHHmm = nowTz.format("HH:mm");
