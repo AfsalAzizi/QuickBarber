@@ -132,8 +132,8 @@ bookingSchema.index({ barber_id: 1, date: 1, status: 1 });
 bookingSchema.index({ customer_phone: 1, status: 1 });
 bookingSchema.index({ created_at: 1 });
 
-// Generate a unique 6-char alphanumeric booking_code before saving
-bookingSchema.pre("save", async function (next) {
+// Generate a unique 6-char alphanumeric booking_code before validation
+bookingSchema.pre("validate", async function (next) {
   try {
     if (!this.booking_code) {
       const alphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; // no ambiguous chars
