@@ -95,7 +95,7 @@ export class AdminController {
   // Get shop settings and barbers by shop_id
   static async getShopSummary(req: Request, res: Response): Promise<void> {
     try {
-      const { shop_id, include_inactive } = req.query as Record<string, string>;
+      const { shop_id } = req.query as Record<string, string>;
       if (!shop_id) {
         res.status(400).json({ success: false, error: "shop_id is required" });
         return;
@@ -109,9 +109,8 @@ export class AdminController {
         return;
       }
 
-      const barberQuery: any = { shop_id };
-      if (include_inactive !== "true") barberQuery.active = true;
-      const barbers = await Barber.find(barberQuery)
+      // Always return all barbers irrespective of active flag
+      const barbers = await Barber.find({ shop_id })
         .sort({ sort_order: 1 })
         .lean();
 
