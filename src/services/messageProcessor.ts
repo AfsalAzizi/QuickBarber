@@ -1207,50 +1207,53 @@ async function getAvailableTimeSlots(
 
     console.log(`Found ${existingBookings.length} existing bookings for today`);
 
-    // Filter out conflicting slots
+    // Filter out conflicting slots, advancing over conflicts and aligning to interval
     const availableSlots: Array<{ id: string; title: string }> = [];
 
-    console.log("Filtering potential slots for conflicts...");
-    console.log("Total potential slots:", potentialSlots.length);
-    console.log("Existing bookings:", existingBookings.length);
+    const roundUpToInterval = (
+      m: moment.Moment,
+      interval: number
+    ): moment.Moment => {
+      const minutes = m.minutes();
+      const remainder = minutes % interval;
+      if (remainder === 0) return m.seconds(0);
+      return m.add(interval - remainder, "minutes").seconds(0);
+    };
 
-    for (
-      let i = 0;
-      i < potentialSlots.length && availableSlots.length < 5;
-      i++
+    let cursor = roundUpToInterval(startTime.clone(), slotInterval);
+    const dayEnd = endTime.clone();
+
+    // Precompute booking intervals
+    const bookedIntervals = existingBookings.map((b) => ({
+      start: moment(b.start_time, "HH:mm"),
+      end: moment(b.end_time, "HH:mm"),
+    }));
+
+    while (
+      cursor.clone().add(serviceDuration, "minutes").isSameOrBefore(dayEnd) &&
+      availableSlots.length < 5
     ) {
-      const slot = potentialSlots[i];
-      const slotStart = moment(slot.start);
-      const slotEnd = moment(slot.end);
+      const slotStart = cursor.clone();
+      const slotEnd = cursor.clone().add(serviceDuration, "minutes");
 
-      const hasConflict = existingBookings.some((booking) => {
-        const bookingStart = moment(booking.start_time, "HH:mm");
-        const bookingEnd = moment(booking.end_time, "HH:mm");
+      // Find any conflicts
+      const conflicts = bookedIntervals.filter(
+        (bi) => slotStart.isBefore(bi.end) && slotEnd.isAfter(bi.start)
+      );
 
-        // Check for time overlap
-        return slotStart.isBefore(bookingEnd) && slotEnd.isAfter(bookingStart);
-      });
-
-      if (!hasConflict) {
+      if (conflicts.length === 0) {
         const slotId = `slot_${availableSlots.length + 1}`;
         const slotTitle = slotStart.format("h:mm A");
-        console.log(
-          `Available slot ${
-            availableSlots.length + 1
-          }: ${slotId} - ${slotTitle} (${slotStart.format(
-            "HH:mm"
-          )} - ${slotEnd.format("HH:mm")})`
-        );
-        availableSlots.push({
-          id: slotId,
-          title: slotTitle,
-        });
+        availableSlots.push({ id: slotId, title: slotTitle });
+        // advance by interval for next suggestion
+        cursor = cursor.add(slotInterval, "minutes");
       } else {
-        console.log(
-          `Slot ${i} has conflict: ${slotStart.format(
-            "HH:mm"
-          )} - ${slotEnd.format("HH:mm")}`
+        // jump cursor to the end of the furthest conflict, then round up to next interval
+        const maxEnd = conflicts.reduce(
+          (acc, bi) => (bi.end.isAfter(acc) ? bi.end : acc),
+          conflicts[0].end
         );
+        cursor = roundUpToInterval(maxEnd.clone(), slotInterval);
       }
     }
 
