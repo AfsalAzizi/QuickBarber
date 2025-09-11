@@ -1021,7 +1021,15 @@ async function handleTimePeriodSelection(
       timePeriod
     )}:`;
 
-    const slotButtons: ButtonOption[] = timeSlots.map((slot, index) => ({
+    // Persist slot map in session to avoid recomputation on selection
+    session.context_data = session.context_data || {};
+    session.context_data.slot_map = timeSlots.map((slot) => ({
+      id: `slot_${slot.id}`,
+      title: slot.title,
+    }));
+    await session.save();
+
+    const slotButtons: ButtonOption[] = timeSlots.map((slot) => ({
       id: `slot_${slot.id}`,
       title: slot.title,
     }));
@@ -1140,6 +1148,10 @@ async function getAvailableTimeSlots(
     // Filter out conflicting slots
     const availableSlots: Array<{ id: string; title: string }> = [];
 
+    console.log("Filtering potential slots for conflicts...");
+    console.log("Total potential slots:", potentialSlots.length);
+    console.log("Existing bookings:", existingBookings.length);
+
     for (
       let i = 0;
       i < potentialSlots.length && availableSlots.length < 5;
@@ -1158,10 +1170,25 @@ async function getAvailableTimeSlots(
       });
 
       if (!hasConflict) {
+        const slotId = `slot_${availableSlots.length + 1}`;
+        const slotTitle = slotStart.format("h:mm A");
+        console.log(
+          `Available slot ${
+            availableSlots.length + 1
+          }: ${slotId} - ${slotTitle} (${slotStart.format(
+            "HH:mm"
+          )} - ${slotEnd.format("HH:mm")})`
+        );
         availableSlots.push({
-          id: `slot_${i + 1}`,
-          title: slotStart.format("h:mm A"),
+          id: slotId,
+          title: slotTitle,
         });
+      } else {
+        console.log(
+          `Slot ${i} has conflict: ${slotStart.format(
+            "HH:mm"
+          )} - ${slotEnd.format("HH:mm")}`
+        );
       }
     }
 
@@ -1197,6 +1224,47 @@ async function getTimeSlotDetails(
     if (!session.selected_barber_id || !session.time_period_key) {
       console.log("Missing required session data for time slot details");
       return null;
+    }
+
+    // Prefer using persisted slot_map if available to avoid recomputation and drift
+    const slotMap: Array<{ id: string; title: string }> | undefined = (
+      session as any
+    ).context_data?.slot_map;
+    if (slotMap && Array.isArray(slotMap) && slotMap.length > 0) {
+      const selected = slotMap.find((s) => s.id === `slot_${slotId}`);
+      if (selected) {
+        // Derive HH:mm from the button title if it's a time like "1:11 PM"
+        const parsed = moment(selected.title, ["h:mm A", "h A", "HH:mm"], true);
+        if (parsed.isValid()) {
+          const startTimeStr = parsed.format("HH:mm");
+
+          // Get service duration to compute end time
+          const service = await ServiceCatalog.findOne({
+            service_key: session.selected_service,
+            is_active: true,
+          }).lean<IServiceCatalog | null>();
+
+          if (!service) {
+            console.log(
+              "Service not found for time slot details (slot_map path)"
+            );
+            return null;
+          }
+
+          const endTimeStr = parsed
+            .clone()
+            .add(service.duration_min, "minutes")
+            .format("HH:mm");
+
+          // Date is today in shop timezone
+          const today = moment().tz(shopInfo.timezone).format("YYYY-MM-DD");
+          return {
+            startTime: startTimeStr,
+            endTime: endTimeStr,
+            date: new Date(today + "T00:00:00.000Z"),
+          };
+        }
+      }
     }
 
     // Get service duration
@@ -1287,6 +1355,10 @@ async function getTimeSlotDetails(
     const slotIndex = parseInt(slotId) - 1;
     let availableSlotIndex = 0;
 
+    console.log("Looking for slot at index:", slotIndex);
+    console.log("Total potential slots:", potentialSlots.length);
+    console.log("Existing bookings:", existingBookings.length);
+
     for (let i = 0; i < potentialSlots.length; i++) {
       const slot = potentialSlots[i];
       const slotStart = moment(slot.start);
@@ -1301,7 +1373,13 @@ async function getTimeSlotDetails(
       });
 
       if (!hasConflict) {
+        console.log(
+          `Available slot ${availableSlotIndex}: ${slotStart.format(
+            "HH:mm"
+          )} - ${slotEnd.format("HH:mm")}`
+        );
         if (availableSlotIndex === slotIndex) {
+          console.log("Found matching slot!");
           return {
             startTime: slotStart.format("HH:mm"),
             endTime: slotEnd.format("HH:mm"),
@@ -1309,10 +1387,21 @@ async function getTimeSlotDetails(
           };
         }
         availableSlotIndex++;
+      } else {
+        console.log(
+          `Slot ${i} has conflict: ${slotStart.format(
+            "HH:mm"
+          )} - ${slotEnd.format("HH:mm")}`
+        );
       }
     }
 
-    console.log("Time slot not found for slot ID:", slotId);
+    console.log(
+      "Time slot not found for slot ID:",
+      slotId,
+      "Available slots found:",
+      availableSlotIndex
+    );
     return null;
   } catch (error) {
     console.error("Error getting time slot details:", error);
@@ -1471,6 +1560,46 @@ async function handleSpecificTimeSelection(
       await sendWhatsAppMessage(
         session.user_phone,
         "Sorry, there was an error processing your booking. Please try again."
+      );
+      return;
+    }
+
+    // Before creating, ensure no overlapping booking exists for barber/shop/time
+    const conflict = await Booking.findOne({
+      shop_id: shopInfo.shop_id,
+      barber_id: session.selected_barber_id,
+      date: timeSlot.date,
+      status: { $in: ["pending", "confirmed"] },
+      $expr: {
+        $and: [
+          // overlap: requested start < existing end AND requested end > existing start
+          {
+            $lt: [
+              {
+                $toDate: {
+                  $concat: ["1970-01-01T", timeSlot.startTime, ":00Z"],
+                },
+              },
+              { $toDate: { $concat: ["1970-01-01T", "$end_time", ":00Z"] } },
+            ],
+          },
+          {
+            $gt: [
+              {
+                $toDate: { $concat: ["1970-01-01T", timeSlot.endTime, ":00Z"] },
+              },
+              { $toDate: { $concat: ["1970-01-01T", "$start_time", ":00Z"] } },
+            ],
+          },
+        ],
+      },
+    }).lean();
+
+    if (conflict) {
+      console.log("Conflict found during booking creation, notifying user");
+      await sendWhatsAppMessage(
+        session.user_phone,
+        "Sorry, that time just got booked. Please pick another slot."
       );
       return;
     }
