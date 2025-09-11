@@ -38,6 +38,11 @@ export function detectIntent(
     return "select_specific_time";
   }
 
+  // Check for button clicks (cancel booking)
+  if (message.startsWith("cancel_booking_")) {
+    return "cancel_booking";
+  }
+
   // Check for "more services" button
   if (message === "more_services") {
     return "list_services";

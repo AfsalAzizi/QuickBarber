@@ -190,6 +190,32 @@ export async function processIncomingMessage(
         }
       }
 
+      // If greeting and user has an active upcoming booking, show summary with cancel option
+      if (
+        messageContent &&
+        ["hi", "hello", "hey"].includes(messageContent.toLowerCase())
+      ) {
+        const upcoming = await Booking.findOne({
+          customer_phone: session.user_phone,
+          shop_id: shopInfo.shop_id,
+          status: { $in: ["pending", "confirmed"] },
+        })
+          .sort({ date: -1 })
+          .lean<IBooking | null>();
+
+        if (upcoming) {
+          const bookingDate = moment(upcoming.date)
+            .tz(shopInfo.timezone)
+            .format("MMMM DD, YYYY");
+          const body = `Your current booking:\n\nDate: ${bookingDate}\nTime: ${upcoming.start_time} - ${upcoming.end_time}\nService: ${upcoming.service_key}\nCode: ${upcoming.booking_code}`;
+          const cancelId = `cancel_booking_${upcoming.booking_id}`;
+          await sendButtonMessage(session.user_phone, body, [
+            { id: cancelId, title: "Cancel booking" },
+          ]);
+          return;
+        }
+      }
+
       // Detect intent
       const intent = detectIntent(messageContent, session);
       console.log("Detected intent:", intent);
@@ -685,12 +711,53 @@ async function showTimePeriodOptions(
     console.log("Current time:", currentTime.format("YYYY-MM-DD HH:mm:ss"));
     console.log("Current hour:", currentHour);
 
-    // Compute available slots per period to avoid mismatches
+    // Decide which period buttons to show based on business rules (shop TZ)
+    const tzNow = currentTime; // already in shop TZ
+    const lunchParts = shopInfo.settings.lunch_start
+      .split(":")
+      .map((n: string) => parseInt(n, 10));
+    const lunchStart = currentTime
+      .clone()
+      .hour(lunchParts[0])
+      .minute(lunchParts[1])
+      .seconds(0);
+    const threePM = currentTime.clone().hour(15).minute(0).seconds(0);
+    const sevenPM = currentTime.clone().hour(19).minute(0).seconds(0);
+    const eightThirty = currentTime.clone().hour(20).minute(30).seconds(0);
+
+    let allowImmediate = true;
+    let allowEvening = false;
+    let allowLater = false;
+
+    if (tzNow.isBefore(lunchStart)) {
+      // Before lunch: show all three
+      allowEvening = true;
+      allowLater = true;
+    } else if (tzNow.isSameOrAfter(threePM) && tzNow.isBefore(sevenPM)) {
+      // Between 3 PM and 7 PM: only immediate and later today
+      allowEvening = false;
+      allowLater = true;
+    } else if (tzNow.isSameOrAfter(eightThirty)) {
+      // From 8:30 PM onwards: only immediate
+      allowEvening = false;
+      allowLater = false;
+    } else {
+      // Other times (e.g., after lunch but before 3 PM, or 7–8:30 PM):
+      // don't show evening if past 3 PM window; show later today.
+      allowEvening = tzNow.isBefore(threePM);
+      allowLater = true;
+    }
+
+    // Compute available slots per allowed period to avoid mismatches
     console.log("Computing available slots per period...");
     const [immediateSlots, eveningSlots, laterTodaySlots] = await Promise.all([
       getAvailableTimeSlots(session, shopInfo, "immediate"),
-      getAvailableTimeSlots(session, shopInfo, "evening"),
-      getAvailableTimeSlots(session, shopInfo, "later_today"),
+      allowEvening
+        ? getAvailableTimeSlots(session, shopInfo, "evening")
+        : Promise.resolve([]),
+      allowLater
+        ? getAvailableTimeSlots(session, shopInfo, "later_today")
+        : Promise.resolve([]),
     ]);
 
     console.log("Availability check results (counts):", {
@@ -705,21 +772,21 @@ When would you like to book your appointment?`;
 
     const timeButtons: ButtonOption[] = [];
 
-    if (immediateSlots.length > 0) {
+    if (allowImmediate && immediateSlots.length > 0) {
       timeButtons.push({
         id: "time_immediate",
         title: "Immediate",
       });
     }
 
-    if (eveningSlots.length > 0) {
+    if (allowEvening && eveningSlots.length > 0) {
       timeButtons.push({
         id: "time_evening",
         title: "This evening",
       });
     }
 
-    if (laterTodaySlots.length > 0) {
+    if (allowLater && laterTodaySlots.length > 0) {
       timeButtons.push({
         id: "time_later_today",
         title: "Later today",
@@ -1193,36 +1260,32 @@ async function getAvailableTimeSlots(
         break;
       case "evening":
         {
-          const eveningStr =
-            shopInfo.settings.evening_start &&
-            shopInfo.settings.evening_start.trim() !== ""
-              ? shopInfo.settings.evening_start
-              : "18:00";
-          const [eveningHour, eveningMinute] = eveningStr
-            .split(":")
-            .map(Number);
-          startTime = currentTime
-            .clone()
-            .hour(eveningHour)
-            .minute(eveningMinute)
-            .seconds(0);
-          endTime = currentTime
-            .clone()
-            .hour(shopInfo.settings.close_time.split(":")[0])
-            .minute(shopInfo.settings.close_time.split(":")[1])
-            .seconds(0);
+          // Evening window 3 PM – 7 PM (use shop TZ)
+          const startHour = 15;
+          const endHour = 19;
+          startTime = currentTime.clone().hour(startHour).minute(0).seconds(0);
+          if (startTime.isBefore(currentTime)) {
+            startTime = currentTime.clone();
+          }
+          endTime = currentTime.clone().hour(endHour).minute(0).seconds(0);
         }
         break;
       case "later_today":
-        startTime = currentTime.clone().add(30, "minutes"); // 30 min buffer
-        const [closeHour, closeMinute] = shopInfo.settings.close_time
-          .split(":")
-          .map(Number);
-        endTime = currentTime
-          .clone()
-          .hour(closeHour)
-          .minute(closeMinute)
-          .seconds(0);
+        // Later today: 8:30 PM – close (shop TZ)
+        startTime = currentTime.clone().hour(20).minute(30).seconds(0);
+        if (startTime.isBefore(currentTime)) {
+          startTime = currentTime.clone();
+        }
+        {
+          const [closeHour, closeMinute] = shopInfo.settings.close_time
+            .split(":")
+            .map(Number);
+          endTime = currentTime
+            .clone()
+            .hour(closeHour)
+            .minute(closeMinute)
+            .seconds(0);
+        }
         break;
       default:
         console.log("Unknown time period:", timePeriod);
@@ -1407,7 +1470,7 @@ async function getTimeSlotDetails(
 
     switch (session.time_period_key) {
       case "immediate":
-        startTime = currentTime.clone().add(15, "minutes"); // 15 min buffer
+        startTime = currentTime.clone().add(10, "minutes"); // 15 min buffer
         endTime = currentTime.clone().add(2, "hours");
         break;
       case "evening":
@@ -1862,8 +1925,64 @@ async function handleCancelBooking(
   session: ISession,
   shopInfo: ShopInfo
 ): Promise<void> {
-  // Implementation for canceling booking
-  console.log("Handling cancel booking");
+  try {
+    console.log("Handling cancel booking");
+    // Identify booking id from last button id if available
+    const lastTitle = (session.context_data as any)?.last_button_title as
+      | string
+      | undefined;
+    // We stored only title; for reliability, extract from message id pattern is better.
+    // As a fallback, cancel latest pending/confirmed booking for this user.
+
+    let bookingDoc = await Booking.findOne({
+      customer_phone: session.user_phone,
+      shop_id: shopInfo.shop_id,
+      status: { $in: ["pending", "confirmed"] },
+    })
+      .sort({ date: -1 })
+      .lean();
+    let booking = bookingDoc as unknown as IBooking | null;
+
+    if (!booking && session.booking_id) {
+      const b2 = await Booking.findOne({
+        booking_id: session.booking_id,
+      }).lean();
+      booking = b2 as unknown as IBooking | null;
+    }
+
+    if (!booking) {
+      await sendWhatsAppMessage(
+        session.user_phone,
+        "No active booking found to cancel."
+      );
+      return;
+    }
+
+    await Booking.updateOne(
+      { booking_id: booking.booking_id },
+      { $set: { status: "cancelled" } }
+    );
+
+    // Clear session
+    session.is_active = false;
+    session.intent = null as any;
+    session.phase = "completed";
+    await session.save();
+
+    const bookingDate = moment(booking.date)
+      .tz(shopInfo.timezone)
+      .format("MMMM DD, YYYY");
+    await sendWhatsAppMessage(
+      session.user_phone,
+      `Your booking on ${bookingDate} at ${booking.start_time} has been cancelled.`
+    );
+  } catch (error) {
+    console.error("Error canceling booking:", error);
+    await closeSessionWithError(
+      session,
+      "Sorry, an error occurred while canceling. Session closed."
+    );
+  }
 }
 
 async function handleReschedule(
