@@ -495,12 +495,19 @@ async function handleBarberSelection(
 ): Promise<void> {
   try {
     console.log("Handling barber selection:", messageContent);
+    console.log("Session data:", {
+      selected_service: session.selected_service,
+      selected_barber_id: session.selected_barber_id,
+      phase: session.phase,
+    });
 
     // Extract barber ID from message
     let barberId = messageContent;
     if (messageContent.startsWith("barber_")) {
       barberId = messageContent.replace("barber_", "");
     }
+
+    console.log("Extracted barber ID:", barberId);
 
     // Get barber details
     const barber = await Barber.findOne({
@@ -509,7 +516,13 @@ async function handleBarberSelection(
       active: true,
     }).lean<IBarber | null>();
 
+    console.log(
+      "Found barber:",
+      barber ? { name: barber.name, barber_id: barber.barber_id } : null
+    );
+
     if (!barber) {
+      console.log("Barber not found, sending error message");
       await sendWhatsAppMessage(
         session.user_phone,
         "Sorry, I couldn't find that barber. Please select from the available options."
@@ -523,12 +536,25 @@ async function handleBarberSelection(
     session.intent = "select_time_period";
     session.phase = "time_selection";
     session.updated_at_iso = new Date();
+
+    console.log("Updating session with barber selection");
     await session.save();
+    console.log("Session updated successfully");
 
     // Show time period options
+    console.log("Showing time period options");
     await showTimePeriodOptions(session, shopInfo);
+    console.log("Time period options sent successfully");
   } catch (error) {
     console.error("Error handling barber selection:", error);
+    console.error(
+      "Error details:",
+      error instanceof Error ? error.message : String(error)
+    );
+    console.error(
+      "Stack trace:",
+      error instanceof Error ? error.stack : "No stack trace"
+    );
   }
 }
 
@@ -541,22 +567,47 @@ async function showTimePeriodOptions(
 ): Promise<void> {
   try {
     console.log("Showing time period options");
+    console.log("Session data:", {
+      selected_barber_id: session.selected_barber_id,
+      selected_barber_name: session.selected_barber_name,
+      selected_service: session.selected_service,
+    });
+    console.log("Shop info:", {
+      shop_id: shopInfo.shop_id,
+      timezone: shopInfo.timezone,
+      settings: shopInfo.settings,
+    });
 
     const currentTime = moment().tz(shopInfo.timezone);
     const currentHour = currentTime.hour();
+    const currentMinute = currentTime.minute();
+
+    console.log("Current time:", currentTime.format("YYYY-MM-DD HH:mm:ss"));
+    console.log("Current hour:", currentHour);
 
     // Check availability for different time periods
+    console.log("Checking immediate slots availability...");
     const hasImmediate = await hasImmediateSlots(
       session,
       shopInfo,
       currentTime
     );
+
+    console.log("Checking evening slots availability...");
     const hasEvening = await hasEveningSlots(session, shopInfo, currentTime);
+
+    console.log("Checking later today slots availability...");
     const hasLaterToday = await hasLaterTodaySlots(
       session,
       shopInfo,
       currentTime
     );
+
+    console.log("Availability check results:", {
+      hasImmediate,
+      hasEvening,
+      hasLaterToday,
+    });
 
     const timeMessage = `Perfect! You selected ${session.selected_barber_name}.
 
@@ -567,14 +618,14 @@ When would you like to book your appointment?`;
     if (hasImmediate) {
       timeButtons.push({
         id: "time_immediate",
-        title: "Immediate (Next slots)",
+        title: "Immediate (Next 2 hours)",
       });
     }
 
     if (hasEvening) {
       timeButtons.push({
         id: "time_evening",
-        title: "This evening (5 PM onwards)",
+        title: "This evening (6:00 PM onwards)",
       });
     }
 
@@ -585,7 +636,10 @@ When would you like to book your appointment?`;
       });
     }
 
+    console.log("Generated time buttons:", timeButtons);
+
     if (timeButtons.length === 0) {
+      console.log("No time slots available, sending no availability message");
       await sendWhatsAppMessage(
         session.user_phone,
         "Sorry, no time slots are available today. Please try again tomorrow."
@@ -593,9 +647,29 @@ When would you like to book your appointment?`;
       return;
     }
 
+    console.log("Sending time period options to user");
     await sendButtonMessage(session.user_phone, timeMessage, timeButtons);
+    console.log("Time period options sent successfully");
   } catch (error) {
     console.error("Error showing time period options:", error);
+    console.error(
+      "Error details:",
+      error instanceof Error ? error.message : String(error)
+    );
+    console.error(
+      "Stack trace:",
+      error instanceof Error ? error.stack : "No stack trace"
+    );
+
+    // Send error message to user
+    try {
+      await sendWhatsAppMessage(
+        session.user_phone,
+        "Sorry, there was an error processing your request. Please try again."
+      );
+    } catch (sendError) {
+      console.error("Error sending error message to user:", sendError);
+    }
   }
 }
 
@@ -607,9 +681,53 @@ async function hasImmediateSlots(
   shopInfo: ShopInfo,
   currentTime: moment.Moment
 ): Promise<boolean> {
-  // Implementation for checking immediate slots
-  // This would check for available slots in the next few hours
-  return true; // Simplified for now
+  try {
+    const settings = shopInfo.settings;
+    const currentHour = currentTime.hour();
+    const currentMinute = currentTime.minute();
+
+    // Parse shop hours
+    const [startHour, startMinute] = settings.start_time.split(":").map(Number);
+    const [closeHour, closeMinute] = settings.close_time.split(":").map(Number);
+    const [eveningHour, eveningMinute] = settings.evening_start
+      .split(":")
+      .map(Number);
+
+    // Calculate immediate time window (next 2 hours)
+    const immediateEndTime = currentTime.clone().add(2, "hours");
+    const immediateEndHour = immediateEndTime.hour();
+    const immediateEndMinute = immediateEndTime.minute();
+
+    // Check if immediate window is within shop hours
+    const immediateEndTimeMinutes = immediateEndHour * 60 + immediateEndMinute;
+    const closeTimeMinutes = closeHour * 60 + closeMinute;
+
+    if (immediateEndTimeMinutes > closeTimeMinutes) {
+      console.log("Immediate slots not available: extends beyond closing time");
+      return false;
+    }
+
+    // Check if we're too close to closing time (less than 2 hours)
+    const currentTimeMinutes = currentHour * 60 + currentMinute;
+    if (currentTimeMinutes + 120 > closeTimeMinutes) {
+      console.log("Immediate slots not available: too close to closing time");
+      return false;
+    }
+
+    // Check for actual availability in the immediate window
+    const hasAvailability = await checkTimeSlotAvailability(
+      session,
+      shopInfo,
+      currentTime,
+      immediateEndTime
+    );
+
+    console.log("Immediate slots availability:", hasAvailability);
+    return hasAvailability;
+  } catch (error) {
+    console.error("Error checking immediate slots:", error);
+    return false;
+  }
 }
 
 /**
@@ -620,9 +738,63 @@ async function hasEveningSlots(
   shopInfo: ShopInfo,
   currentTime: moment.Moment
 ): Promise<boolean> {
-  // Implementation for checking evening slots
-  // This would check for available slots from 5 PM onwards
-  return true; // Simplified for now
+  try {
+    const settings = shopInfo.settings;
+    const currentHour = currentTime.hour();
+    const currentMinute = currentTime.minute();
+
+    // Parse shop hours
+    const [eveningHour, eveningMinute] = settings.evening_start
+      .split(":")
+      .map(Number);
+    const [closeHour, closeMinute] = settings.close_time.split(":").map(Number);
+
+    // Check if current time is before evening
+    const currentTimeMinutes = currentHour * 60 + currentMinute;
+    const eveningTimeMinutes = eveningHour * 60 + eveningMinute;
+
+    if (currentTimeMinutes >= eveningTimeMinutes) {
+      console.log("Evening slots not available: already past evening time");
+      return false;
+    }
+
+    // Check if there's enough time between evening and closing
+    const closeTimeMinutes = closeHour * 60 + closeMinute;
+    const eveningDuration = closeTimeMinutes - eveningTimeMinutes;
+
+    if (eveningDuration < 60) {
+      // At least 1 hour needed
+      console.log(
+        "Evening slots not available: insufficient time between evening and closing"
+      );
+      return false;
+    }
+
+    // Check for actual availability in evening window
+    const eveningStart = currentTime
+      .clone()
+      .hour(eveningHour)
+      .minute(eveningMinute)
+      .second(0);
+    const eveningEnd = currentTime
+      .clone()
+      .hour(closeHour)
+      .minute(closeMinute)
+      .second(0);
+
+    const hasAvailability = await checkTimeSlotAvailability(
+      session,
+      shopInfo,
+      eveningStart,
+      eveningEnd
+    );
+
+    console.log("Evening slots availability:", hasAvailability);
+    return hasAvailability;
+  } catch (error) {
+    console.error("Error checking evening slots:", error);
+    return false;
+  }
 }
 
 /**
@@ -633,9 +805,170 @@ async function hasLaterTodaySlots(
   shopInfo: ShopInfo,
   currentTime: moment.Moment
 ): Promise<boolean> {
-  // Implementation for checking later today slots
-  // This would check for available slots after evening but before closing
-  return true; // Simplified for now
+  try {
+    const settings = shopInfo.settings;
+    const currentHour = currentTime.hour();
+    const currentMinute = currentTime.minute();
+
+    // Parse shop hours
+    const [eveningHour, eveningMinute] = settings.evening_start
+      .split(":")
+      .map(Number);
+    const [closeHour, closeMinute] = settings.close_time.split(":").map(Number);
+
+    // Check if current time is after evening
+    const currentTimeMinutes = currentHour * 60 + currentMinute;
+    const eveningTimeMinutes = eveningHour * 60 + eveningMinute;
+
+    if (currentTimeMinutes < eveningTimeMinutes) {
+      console.log("Later today slots not available: not yet evening");
+      return false;
+    }
+
+    // Check if we're too close to closing time (less than 1 hour)
+    const closeTimeMinutes = closeHour * 60 + closeMinute;
+    if (currentTimeMinutes + 60 > closeTimeMinutes) {
+      console.log("Later today slots not available: too close to closing time");
+      return false;
+    }
+
+    // Check for actual availability in later today window
+    const laterStart = currentTime.clone();
+    const laterEnd = currentTime
+      .clone()
+      .hour(closeHour)
+      .minute(closeMinute)
+      .second(0);
+
+    const hasAvailability = await checkTimeSlotAvailability(
+      session,
+      shopInfo,
+      laterStart,
+      laterEnd
+    );
+
+    console.log("Later today slots availability:", hasAvailability);
+    return hasAvailability;
+  } catch (error) {
+    console.error("Error checking later today slots:", error);
+    return false;
+  }
+}
+
+/**
+ * Check time slot availability by looking for booking conflicts
+ */
+async function checkTimeSlotAvailability(
+  session: ISession,
+  shopInfo: ShopInfo,
+  startTime: moment.Moment,
+  endTime: moment.Moment
+): Promise<boolean> {
+  try {
+    if (!session.selected_barber_id) {
+      console.log("No barber selected for availability check");
+      return false;
+    }
+
+    // Get service duration
+    const service = await ServiceCatalog.findOne({
+      service_key: session.selected_service,
+      is_active: true,
+    }).lean<IServiceCatalog | null>();
+
+    if (!service) {
+      console.log("Service not found for availability check");
+      return false;
+    }
+
+    const serviceDuration = service.duration_min;
+    const slotInterval = shopInfo.settings.slot_interval_min;
+
+    // Generate potential time slots within the window
+    const potentialSlots = generateTimeSlots(
+      startTime,
+      endTime,
+      slotInterval,
+      serviceDuration
+    );
+
+    if (potentialSlots.length === 0) {
+      console.log("No potential slots generated");
+      return false;
+    }
+
+    // Check for existing bookings that conflict with these slots
+    const today = startTime.format("YYYY-MM-DD");
+    const existingBookings = await Booking.find({
+      shop_id: shopInfo.shop_id,
+      barber_id: session.selected_barber_id,
+      date: {
+        $gte: new Date(today + "T00:00:00.000Z"),
+        $lt: new Date(today + "T23:59:59.999Z"),
+      },
+      status: { $in: ["pending", "confirmed"] },
+    }).lean();
+
+    console.log(`Found ${existingBookings.length} existing bookings for today`);
+
+    // Check if any potential slot is available
+    for (const slot of potentialSlots) {
+      const slotStart = moment(slot.start);
+      const slotEnd = moment(slot.end);
+
+      const hasConflict = existingBookings.some((booking) => {
+        const bookingStart = moment(booking.start_time, "HH:mm");
+        const bookingEnd = moment(booking.end_time, "HH:mm");
+
+        // Check for time overlap
+        return slotStart.isBefore(bookingEnd) && slotEnd.isAfter(bookingStart);
+      });
+
+      if (!hasConflict) {
+        console.log(
+          `Available slot found: ${slotStart.format(
+            "HH:mm"
+          )} - ${slotEnd.format("HH:mm")}`
+        );
+        return true;
+      }
+    }
+
+    console.log("No available slots found in the time window");
+    return false;
+  } catch (error) {
+    console.error("Error checking time slot availability:", error);
+    return false;
+  }
+}
+
+/**
+ * Generate potential time slots within a time window
+ */
+function generateTimeSlots(
+  startTime: moment.Moment,
+  endTime: moment.Moment,
+  slotInterval: number,
+  serviceDuration: number
+): Array<{ start: moment.Moment; end: moment.Moment }> {
+  const slots: Array<{ start: moment.Moment; end: moment.Moment }> = [];
+  const current = startTime.clone();
+
+  while (
+    current.clone().add(serviceDuration, "minutes").isSameOrBefore(endTime)
+  ) {
+    const slotStart = current.clone();
+    const slotEnd = current.clone().add(serviceDuration, "minutes");
+
+    slots.push({
+      start: slotStart,
+      end: slotEnd,
+    });
+
+    current.add(slotInterval, "minutes");
+  }
+
+  return slots;
 }
 
 /**
@@ -700,13 +1033,128 @@ async function getAvailableTimeSlots(
   shopInfo: ShopInfo,
   timePeriod: string
 ): Promise<Array<{ id: string; title: string }>> {
-  // Implementation for getting available time slots
-  // This would calculate available slots based on shop hours, existing bookings, etc.
-  return [
-    { id: "slot_1", title: "10:00 AM" },
-    { id: "slot_2", title: "11:00 AM" },
-    { id: "slot_3", title: "2:00 PM" },
-  ]; // Simplified for now
+  try {
+    if (!session.selected_barber_id) {
+      console.log("No barber selected for time slot generation");
+      return [];
+    }
+
+    // Get service duration
+    const service = await ServiceCatalog.findOne({
+      service_key: session.selected_service,
+      is_active: true,
+    }).lean<IServiceCatalog | null>();
+
+    if (!service) {
+      console.log("Service not found for time slot generation");
+      return [];
+    }
+
+    const serviceDuration = service.duration_min;
+    const slotInterval = shopInfo.settings.slot_interval_min;
+    const currentTime = moment().tz(shopInfo.timezone);
+
+    // Define time window based on period
+    let startTime: moment.Moment;
+    let endTime: moment.Moment;
+
+    switch (timePeriod) {
+      case "immediate":
+        startTime = currentTime.clone().add(15, "minutes"); // 15 min buffer
+        endTime = currentTime.clone().add(2, "hours");
+        break;
+      case "evening":
+        const [eveningHour, eveningMinute] = shopInfo.settings.evening_start
+          .split(":")
+          .map(Number);
+        startTime = currentTime
+          .clone()
+          .hour(eveningHour)
+          .minute(eveningMinute)
+          .second(0);
+        endTime = currentTime
+          .clone()
+          .hour(shopInfo.settings.close_time.split(":")[0])
+          .minute(shopInfo.settings.close_time.split(":")[1])
+          .second(0);
+        break;
+      case "later_today":
+        startTime = currentTime.clone().add(30, "minutes"); // 30 min buffer
+        const [closeHour, closeMinute] = shopInfo.settings.close_time
+          .split(":")
+          .map(Number);
+        endTime = currentTime
+          .clone()
+          .hour(closeHour)
+          .minute(closeMinute)
+          .second(0);
+        break;
+      default:
+        console.log("Unknown time period:", timePeriod);
+        return [];
+    }
+
+    // Generate potential time slots
+    const potentialSlots = generateTimeSlots(
+      startTime,
+      endTime,
+      slotInterval,
+      serviceDuration
+    );
+
+    if (potentialSlots.length === 0) {
+      console.log("No potential slots generated");
+      return [];
+    }
+
+    // Get existing bookings for today
+    const today = startTime.format("YYYY-MM-DD");
+    const existingBookings = await Booking.find({
+      shop_id: shopInfo.shop_id,
+      barber_id: session.selected_barber_id,
+      date: {
+        $gte: new Date(today + "T00:00:00.000Z"),
+        $lt: new Date(today + "T23:59:59.999Z"),
+      },
+      status: { $in: ["pending", "confirmed"] },
+    }).lean();
+
+    console.log(`Found ${existingBookings.length} existing bookings for today`);
+
+    // Filter out conflicting slots
+    const availableSlots: Array<{ id: string; title: string }> = [];
+
+    for (
+      let i = 0;
+      i < potentialSlots.length && availableSlots.length < 5;
+      i++
+    ) {
+      const slot = potentialSlots[i];
+      const slotStart = moment(slot.start);
+      const slotEnd = moment(slot.end);
+
+      const hasConflict = existingBookings.some((booking) => {
+        const bookingStart = moment(booking.start_time, "HH:mm");
+        const bookingEnd = moment(booking.end_time, "HH:mm");
+
+        // Check for time overlap
+        return slotStart.isBefore(bookingEnd) && slotEnd.isAfter(bookingStart);
+      });
+
+      if (!hasConflict) {
+        availableSlots.push({
+          id: `slot_${i + 1}`,
+          title: slotStart.format("h:mm A"),
+        });
+      }
+    }
+
+    console.log(`Generated ${availableSlots.length} available time slots`);
+    return availableSlots;
+  } catch (error) {
+    console.error("Error getting available time slots:", error);
+    return [];
+  }
 }
 
 /**
@@ -714,9 +1162,9 @@ async function getAvailableTimeSlots(
  */
 function getTimePeriodLabel(timePeriod: string): string {
   const labels: Record<string, string> = {
-    immediate: "immediate slots",
-    evening: "this evening",
-    later_today: "later today",
+    immediate: "immediate slots (next 2 hours)",
+    evening: "this evening (6:00 PM onwards)",
+    later_today: "later today (after evening)",
   };
   return labels[timePeriod] || timePeriod;
 }
