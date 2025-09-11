@@ -25,6 +25,9 @@ router.get("/bookings", AdminController.listBookings);
 // List error logs with optional filters
 router.get("/error-logs", AdminController.listErrorLogs);
 
+// Delete all bookings
+router.delete("/bookings", AdminController.deleteAllBookings);
+
 // Clear all data (nuclear option)
 router.delete("/clear-all", AdminController.clearAllData);
 

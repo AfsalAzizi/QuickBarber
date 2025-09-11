@@ -45,6 +45,27 @@ export class AdminController {
       res.status(500).json(errorResponse);
     }
   }
+
+  // Delete all bookings
+  static async deleteAllBookings(req: Request, res: Response): Promise<void> {
+    try {
+      const result = await Booking.deleteMany({});
+      const response: ApiResponse = {
+        success: true,
+        message: "All bookings deleted",
+        data: { deletedCount: result.deletedCount },
+      };
+      res.status(200).json(response);
+    } catch (error: unknown) {
+      console.error("Error deleting all bookings:", error);
+      const errorResponse: ApiResponse = {
+        success: false,
+        error: "Failed to delete bookings",
+        message: error instanceof Error ? error.message : String(error),
+      };
+      res.status(500).json(errorResponse);
+    }
+  }
   // List bookings with optional filters
   static async listBookings(req: Request, res: Response): Promise<void> {
     try {
