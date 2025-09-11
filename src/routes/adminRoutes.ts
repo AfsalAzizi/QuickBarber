@@ -34,6 +34,12 @@ router.get("/barbers", AdminController.listBarbers);
 // Update a barber (by barberId) with query shop_id
 router.patch("/barbers/:barberId", AdminController.updateBarber);
 
+// Notify next booking for a barber
+router.post(
+  "/barbers/:barberId/notify-next",
+  AdminController.notifyNextBooking
+);
+
 // Get shop settings and barbers
 router.get("/shop-summary", AdminController.getShopSummary);
 
