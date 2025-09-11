@@ -132,17 +132,32 @@ bookingSchema.index({ barber_id: 1, date: 1, status: 1 });
 bookingSchema.index({ customer_phone: 1, status: 1 });
 bookingSchema.index({ created_at: 1 });
 
-// Generate booking code before saving
-bookingSchema.pre("save", function (next) {
-  if (!this.booking_code) {
-    const shopPrefix = this.shop_id.substring(0, 2).toUpperCase();
-    const timestamp = Date.now().toString().slice(-6);
-    const random = Math.floor(Math.random() * 1000)
-      .toString()
-      .padStart(3, "0");
-    this.booking_code = `${shopPrefix}${timestamp}${random}`;
+// Generate a unique 6-char alphanumeric booking_code before saving
+bookingSchema.pre("save", async function (next) {
+  try {
+    if (!this.booking_code) {
+      const alphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; // no ambiguous chars
+      const gen = () =>
+        Array.from({ length: 6 })
+          .map(() => alphabet[Math.floor(Math.random() * alphabet.length)])
+          .join("");
+
+      let code = gen();
+      // Ensure uniqueness
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const Model: any = this.constructor;
+      // Try a few times to avoid rare collisions
+      for (let i = 0; i < 5; i++) {
+        const exists = await Model.exists({ booking_code: code });
+        if (!exists) break;
+        code = gen();
+      }
+      this.booking_code = code;
+    }
+    next();
+  } catch (err) {
+    next(err as any);
   }
-  next();
 });
 
 export const Booking =
