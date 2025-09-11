@@ -618,21 +618,21 @@ When would you like to book your appointment?`;
     if (hasImmediate) {
       timeButtons.push({
         id: "time_immediate",
-        title: "Immediate (Next 2 hours)",
+        title: "Immediate",
       });
     }
 
     if (hasEvening) {
       timeButtons.push({
         id: "time_evening",
-        title: "This evening (6:00 PM onwards)",
+        title: "This evening",
       });
     }
 
     if (hasLaterToday) {
       timeButtons.push({
         id: "time_later_today",
-        title: "Later today (After evening)",
+        title: "Later today",
       });
     }
 
@@ -743,6 +743,12 @@ async function hasEveningSlots(
     const currentHour = currentTime.hour();
     const currentMinute = currentTime.minute();
 
+    // Check if evening_start is configured
+    if (!settings.evening_start || settings.evening_start.trim() === "") {
+      console.log("Evening slots not available: evening_start not configured");
+      return false;
+    }
+
     // Parse shop hours
     const [eveningHour, eveningMinute] = settings.evening_start
       .split(":")
@@ -775,12 +781,12 @@ async function hasEveningSlots(
       .clone()
       .hour(eveningHour)
       .minute(eveningMinute)
-      .second(0);
+      .seconds(0);
     const eveningEnd = currentTime
       .clone()
       .hour(closeHour)
       .minute(closeMinute)
-      .second(0);
+      .seconds(0);
 
     const hasAvailability = await checkTimeSlotAvailability(
       session,
@@ -838,7 +844,7 @@ async function hasLaterTodaySlots(
       .clone()
       .hour(closeHour)
       .minute(closeMinute)
-      .second(0);
+      .seconds(0);
 
     const hasAvailability = await checkTimeSlotAvailability(
       session,
@@ -1064,6 +1070,15 @@ async function getAvailableTimeSlots(
         endTime = currentTime.clone().add(2, "hours");
         break;
       case "evening":
+        if (
+          !shopInfo.settings.evening_start ||
+          shopInfo.settings.evening_start.trim() === ""
+        ) {
+          console.log(
+            "Evening time period not available: evening_start not configured"
+          );
+          return [];
+        }
         const [eveningHour, eveningMinute] = shopInfo.settings.evening_start
           .split(":")
           .map(Number);
@@ -1071,12 +1086,12 @@ async function getAvailableTimeSlots(
           .clone()
           .hour(eveningHour)
           .minute(eveningMinute)
-          .second(0);
+          .seconds(0);
         endTime = currentTime
           .clone()
           .hour(shopInfo.settings.close_time.split(":")[0])
           .minute(shopInfo.settings.close_time.split(":")[1])
-          .second(0);
+          .seconds(0);
         break;
       case "later_today":
         startTime = currentTime.clone().add(30, "minutes"); // 30 min buffer
@@ -1087,7 +1102,7 @@ async function getAvailableTimeSlots(
           .clone()
           .hour(closeHour)
           .minute(closeMinute)
-          .second(0);
+          .seconds(0);
         break;
       default:
         console.log("Unknown time period:", timePeriod);
