@@ -1079,16 +1079,19 @@ async function handleTimePeriodSelection(
       timePeriod
     )}:`;
 
+    // Limit to first 3 slots for WhatsApp button constraint
+    const limitedSlots = timeSlots.slice(0, 3);
+
     // Persist slot map in session to avoid recomputation on selection
     session.context_data = session.context_data || {};
-    session.context_data.slot_map = timeSlots.map((slot) => ({
-      id: slot.id, // keep single prefix e.g., "slot_3"
+    session.context_data.slot_map = limitedSlots.map((slot) => ({
+      id: slot.id,
       title: slot.title,
     }));
     await session.save();
 
-    const slotButtons: ButtonOption[] = timeSlots.map((slot) => ({
-      id: slot.id, // keep single prefix e.g., "slot_3"
+    const slotButtons: ButtonOption[] = limitedSlots.map((slot) => ({
+      id: slot.id,
       title: slot.title,
     }));
 
