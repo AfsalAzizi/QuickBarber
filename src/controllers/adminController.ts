@@ -368,6 +368,24 @@ export class AdminController {
         (result) => !result.success
       );
 
+      // Deactivate active sessions for affected customers in this shop
+      const affectedPhones = Array.from(
+        new Set(futureBookings.map((b) => b.customer_phone))
+      );
+      if (affectedPhones.length > 0) {
+        await Session.updateMany(
+          { shop_id, user_phone: { $in: affectedPhones }, is_active: true },
+          {
+            $set: {
+              is_active: false,
+              updated_at_iso: new Date(),
+              intent: null,
+              wa_context_id: null,
+            },
+          }
+        );
+      }
+
       res.status(200).json({
         success: true,
         message: `Successfully cancelled ${updateResult.modifiedCount} future bookings for ${barber.name}`,
