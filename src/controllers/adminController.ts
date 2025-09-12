@@ -336,18 +336,35 @@ export class AdminController {
         return;
       }
 
-      // Check if barber has any active bookings
-      const activeBookings = await Booking.countDocuments({
+      // Get shop settings to determine timezone
+      const settings = await Settings.findOne({
+        shop_id,
+      }).lean<ISettings | null>();
+
+      if (!settings) {
+        res.status(404).json({ success: false, error: "Settings not found" });
+        return;
+      }
+
+      // Calculate today's date range in the shop's timezone
+      const tz = settings.time_zone || "UTC";
+      const nowTz = moment().tz(tz);
+      const today = nowTz.clone().startOf("day").toDate();
+      const todayEnd = nowTz.clone().endOf("day").toDate();
+
+      // Check if barber has any active bookings for today only
+      const activeBookingsToday = await Booking.countDocuments({
         barber_id: barberId,
         shop_id,
         status: { $in: ["pending", "confirmed"] },
+        date: { $gte: today, $lte: todayEnd },
       });
 
-      if (activeBookings > 0) {
+      if (activeBookingsToday > 0) {
         res.status(400).json({
           success: false,
           error:
-            "Cannot delete barber with active bookings. Please cancel or complete all bookings first.",
+            "Cannot delete barber with active bookings for today. Please cancel or complete today's bookings first.",
         });
         return;
       }
