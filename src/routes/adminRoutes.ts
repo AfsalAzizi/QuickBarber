@@ -46,6 +46,12 @@ router.post(
   AdminController.notifyNextBooking
 );
 
+// Cancel all future bookings for a barber
+router.post(
+  "/barbers/:barberId/cancel-future-bookings",
+  AdminController.cancelAllFutureBookings
+);
+
 // Get shop settings and barbers
 router.get("/shop-summary", AdminController.getShopSummary);
 

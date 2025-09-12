@@ -241,6 +241,153 @@ export class AdminController {
       });
     }
   }
+
+  // Cancel all future bookings for a barber: POST /admin/barbers/:barberId/cancel-future-bookings?shop_id=QS001
+  static async cancelAllFutureBookings(
+    req: Request,
+    res: Response
+  ): Promise<void> {
+    try {
+      const { barberId } = req.params as { barberId: string };
+      const { shop_id } = req.query as Record<string, string>;
+
+      if (!shop_id || !barberId) {
+        res
+          .status(400)
+          .json({ success: false, error: "shop_id and barberId are required" });
+        return;
+      }
+
+      // Get shop settings to determine timezone
+      const settings = await Settings.findOne({
+        shop_id,
+      }).lean<ISettings | null>();
+
+      if (!settings) {
+        res.status(404).json({ success: false, error: "Settings not found" });
+        return;
+      }
+
+      // Check if barber exists and belongs to the shop
+      const barber = await Barber.findOne({
+        shop_id,
+        barber_id: barberId,
+      }).lean<IBarber | null>();
+
+      if (!barber) {
+        res.status(404).json({ success: false, error: "Barber not found" });
+        return;
+      }
+
+      // Calculate current time in the shop's timezone
+      const tz = settings.time_zone || "UTC";
+      const nowTz = moment().tz(tz);
+      const now = nowTz.toDate();
+
+      // Find all future bookings for this barber
+      const futureBookings = await Booking.find({
+        barber_id: barberId,
+        shop_id,
+        status: { $in: ["pending", "confirmed"] },
+        $or: [
+          { date: { $gt: now } },
+          {
+            date: { $gte: nowTz.clone().startOf("day").toDate() },
+            start_time: { $gt: nowTz.format("HH:mm") },
+          },
+        ],
+      }).lean<IBooking[]>();
+
+      if (futureBookings.length === 0) {
+        res.status(200).json({
+          success: true,
+          message: "No future bookings found to cancel",
+          data: { cancelled_count: 0, barber_name: barber.name },
+        });
+        return;
+      }
+
+      // Cancel all future bookings
+      const updateResult = await Booking.updateMany(
+        {
+          barber_id: barberId,
+          shop_id,
+          status: { $in: ["pending", "confirmed"] },
+          $or: [
+            { date: { $gt: now } },
+            {
+              date: { $gte: nowTz.clone().startOf("day").toDate() },
+              start_time: { $gt: nowTz.format("HH:mm") },
+            },
+          ],
+        },
+        {
+          $set: {
+            status: "cancelled",
+            updated_at: new Date(),
+          },
+        }
+      );
+
+      // Send cancellation notifications to customers
+      const notificationPromises = futureBookings.map(async (booking) => {
+        try {
+          const cancellationMessage = `We're sorry to inform you that your appointment with ${
+            barber.name
+          } on ${moment(booking.date).tz(tz).format("MMMM Do, YYYY")} at ${
+            booking.start_time
+          } has been cancelled. Please contact us to reschedule. We apologize for any inconvenience.`;
+          await sendWhatsAppMessage(
+            booking.customer_phone,
+            cancellationMessage
+          );
+          return {
+            success: true,
+            phone: booking.customer_phone,
+            booking_id: booking.booking_id,
+          };
+        } catch (error) {
+          console.error(
+            `Failed to send cancellation notification to ${booking.customer_phone}:`,
+            error
+          );
+          return {
+            success: false,
+            phone: booking.customer_phone,
+            booking_id: booking.booking_id,
+            error: error instanceof Error ? error.message : String(error),
+          };
+        }
+      });
+
+      const notificationResults = await Promise.all(notificationPromises);
+      const successfulNotifications = notificationResults.filter(
+        (result) => result.success
+      ).length;
+      const failedNotifications = notificationResults.filter(
+        (result) => !result.success
+      );
+
+      res.status(200).json({
+        success: true,
+        message: `Successfully cancelled ${updateResult.modifiedCount} future bookings for ${barber.name}`,
+        data: {
+          barber_name: barber.name,
+          cancelled_count: updateResult.modifiedCount,
+          notifications_sent: successfulNotifications,
+          notification_failures: failedNotifications.length,
+          failed_notifications: failedNotifications,
+        },
+      });
+    } catch (error: unknown) {
+      console.error("Error cancelling future bookings:", error);
+      res.status(500).json({
+        success: false,
+        error: "Failed to cancel future bookings",
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
   // Add a new barber to a shop
   static async addBarber(req: Request, res: Response): Promise<void> {
     try {
