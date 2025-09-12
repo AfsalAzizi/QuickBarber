@@ -31,8 +31,14 @@ router.delete("/bookings", AdminController.deleteAllBookings);
 // List barbers for a shop (defaults to active=true)
 router.get("/barbers", AdminController.listBarbers);
 
+// Add a new barber to a shop
+router.post("/barbers", AdminController.addBarber);
+
 // Update a barber (by barberId) with query shop_id
 router.patch("/barbers/:barberId", AdminController.updateBarber);
+
+// Delete a barber from a shop
+router.delete("/barbers/:barberId", AdminController.deleteBarber);
 
 // Notify next booking for a barber
 router.post(

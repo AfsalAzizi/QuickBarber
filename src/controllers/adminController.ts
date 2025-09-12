@@ -241,6 +241,138 @@ export class AdminController {
       });
     }
   }
+  // Add a new barber to a shop
+  static async addBarber(req: Request, res: Response): Promise<void> {
+    try {
+      const { shop_id } = req.query as Record<string, string>;
+      const { name } = req.body as { name: string };
+
+      if (!shop_id) {
+        res.status(400).json({ success: false, error: "shop_id is required" });
+        return;
+      }
+
+      if (!name || typeof name !== "string" || name.trim() === "") {
+        res.status(400).json({ success: false, error: "name is required" });
+        return;
+      }
+
+      // Generate unique barber_id
+      const barberId = `BARBER_${Date.now()}_${Math.random()
+        .toString(36)
+        .substr(2, 9)}`;
+
+      // Get the next sort order for this shop
+      const lastBarber = await Barber.findOne({ shop_id })
+        .sort({ sort_order: -1 })
+        .lean<IBarber | null>();
+      const nextSortOrder = lastBarber ? (lastBarber.sort_order || 0) + 1 : 1;
+
+      // Default working hours (9 AM to 6 PM, Monday to Friday)
+      const defaultWorkingHours = {
+        monday: { start: "09:00", end: "18:00", is_working: true },
+        tuesday: { start: "09:00", end: "18:00", is_working: true },
+        wednesday: { start: "09:00", end: "18:00", is_working: true },
+        thursday: { start: "09:00", end: "18:00", is_working: true },
+        friday: { start: "09:00", end: "18:00", is_working: true },
+        saturday: { start: "09:00", end: "18:00", is_working: false },
+        sunday: { start: "09:00", end: "18:00", is_working: false },
+      };
+
+      const newBarber = new Barber({
+        barber_id: barberId,
+        shop_id,
+        name: name.trim(),
+        active: true,
+        sort_order: nextSortOrder,
+        working_hours: defaultWorkingHours,
+        specialties: [],
+      });
+
+      await newBarber.save();
+
+      res.status(201).json({
+        success: true,
+        data: newBarber,
+        message: "Barber added successfully",
+      });
+    } catch (error: unknown) {
+      console.error("Error adding barber:", error);
+      res.status(500).json({
+        success: false,
+        error: "Failed to add barber",
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  // Delete a barber from a shop
+  static async deleteBarber(req: Request, res: Response): Promise<void> {
+    try {
+      const { barberId } = req.params as { barberId: string };
+      const { shop_id } = req.query as Record<string, string>;
+
+      if (!shop_id) {
+        res.status(400).json({ success: false, error: "shop_id is required" });
+        return;
+      }
+
+      if (!barberId) {
+        res.status(400).json({ success: false, error: "barberId is required" });
+        return;
+      }
+
+      // Check if barber exists and belongs to the shop
+      const barber = await Barber.findOne({
+        barber_id: barberId,
+        shop_id,
+      }).lean();
+
+      if (!barber) {
+        res.status(404).json({
+          success: false,
+          error: "Barber not found or does not belong to this shop",
+        });
+        return;
+      }
+
+      // Check if barber has any active bookings
+      const activeBookings = await Booking.countDocuments({
+        barber_id: barberId,
+        shop_id,
+        status: { $in: ["pending", "confirmed"] },
+      });
+
+      if (activeBookings > 0) {
+        res.status(400).json({
+          success: false,
+          error:
+            "Cannot delete barber with active bookings. Please cancel or complete all bookings first.",
+        });
+        return;
+      }
+
+      // Delete the barber
+      await Barber.deleteOne({
+        barber_id: barberId,
+        shop_id,
+      });
+
+      res.status(200).json({
+        success: true,
+        message: "Barber deleted successfully",
+        data: { deleted_barber_id: barberId },
+      });
+    } catch (error: unknown) {
+      console.error("Error deleting barber:", error);
+      res.status(500).json({
+        success: false,
+        error: "Failed to delete barber",
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
   // List error logs with optional filters
   static async listErrorLogs(req: Request, res: Response): Promise<void> {
     try {

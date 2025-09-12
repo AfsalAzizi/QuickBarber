@@ -177,6 +177,19 @@ export async function processIncomingMessage(
       );
       console.log("Session loaded:", session._id);
 
+      // Check if shop is still open - if not, close session
+      const isShopOpen = await checkShopAvailability(shopInfo);
+      if (!isShopOpen) {
+        console.log("Shop is closed, deactivating session");
+        session.is_active = false;
+        await session.save();
+        await sendWhatsAppMessage(
+          message.from,
+          `Sorry, ${shopInfo.settings.shop_name} is currently closed. Please try again during our business hours.`
+        );
+        return;
+      }
+
       // Persist interactive button title (if present) for downstream handlers
       if (message.type === "interactive") {
         const title =
@@ -349,6 +362,16 @@ async function handleFirstMessage(
 ): Promise<void> {
   try {
     console.log("Handling first message from user:", userPhone);
+
+    // Check if shop is open and barbers are available
+    const isShopOpen = await checkShopAvailability(shopInfo);
+    if (!isShopOpen) {
+      await sendWhatsAppMessage(
+        userPhone,
+        `Sorry, ${shopInfo.settings.shop_name} is currently closed or no barbers are available. Please try again during our business hours.`
+      );
+      return; // Don't create session if shop is closed
+    }
 
     // Create new session
     const session = new Session({
@@ -554,6 +577,67 @@ async function processIntent(
     }
   } catch (error) {
     console.error("Error processing intent:", error);
+  }
+}
+
+/**
+ * Check if shop is open and barbers are available
+ */
+async function checkShopAvailability(shopInfo: ShopInfo): Promise<boolean> {
+  try {
+    const settings = shopInfo.settings;
+    const currentTime = moment().tz(shopInfo.timezone);
+
+    // Check if current time is within shop hours
+    const currentHour = currentTime.hour();
+    const currentMinute = currentTime.minute();
+    const currentTimeMinutes = currentHour * 60 + currentMinute;
+
+    // Parse shop hours
+    const [startHour, startMinute] = settings.start_time.split(":").map(Number);
+    const [closeHour, closeMinute] = settings.close_time.split(":").map(Number);
+
+    const startTimeMinutes = startHour * 60 + startMinute;
+    const closeTimeMinutes = closeHour * 60 + closeMinute;
+
+    // Check if current time is within business hours
+    if (
+      currentTimeMinutes < startTimeMinutes ||
+      currentTimeMinutes >= closeTimeMinutes
+    ) {
+      console.log("Shop is closed - outside business hours");
+      return false;
+    }
+
+    // Check if there are any active barbers
+    const activeBarbers = await Barber.countDocuments({
+      shop_id: shopInfo.shop_id,
+      active: true,
+    });
+
+    if (activeBarbers === 0) {
+      console.log("No active barbers available");
+      return false;
+    }
+
+    // Check if any barber has working hours for today
+    const today = currentTime.format("dddd").toLowerCase(); // monday, tuesday, etc.
+    const barbersWithWorkingHours = await Barber.countDocuments({
+      shop_id: shopInfo.shop_id,
+      active: true,
+      [`working_hours.${today}.is_working`]: true,
+    });
+
+    if (barbersWithWorkingHours === 0) {
+      console.log("No barbers working today");
+      return false;
+    }
+
+    console.log("Shop is open and barbers are available");
+    return true;
+  } catch (error) {
+    console.error("Error checking shop availability:", error);
+    return false; // Default to closed if error
   }
 }
 
