@@ -463,10 +463,39 @@ async function loadOrCreateSession(
       await session.save();
       console.log("Created new session:", session._id);
     } else {
-      // Update last activity
-      session.last_activity = new Date();
-      session.updated_at_iso = new Date();
-      await session.save();
+      // Check if session is from a past date - if so, start fresh
+      const today = moment().startOf("day").toDate();
+      const sessionDate = moment(session.last_activity).startOf("day").toDate();
+
+      if (sessionDate < today) {
+        console.log("Session is from past date, starting fresh session");
+        // Deactivate old session
+        session.is_active = false;
+        await session.save();
+
+        // Create new session
+        session = new Session({
+          user_phone: userPhone,
+          shop_id: shopId,
+          phone_number_id: phoneNumberId,
+          intent: "first_message",
+          phase: "welcome",
+          is_active: true,
+          last_activity: new Date(),
+          updated_at_iso: new Date(),
+        });
+
+        await session.save();
+        console.log(
+          "Created fresh session after past date check:",
+          session._id
+        );
+      } else {
+        // Update last activity for current day session
+        session.last_activity = new Date();
+        session.updated_at_iso = new Date();
+        await session.save();
+      }
     }
 
     return session;

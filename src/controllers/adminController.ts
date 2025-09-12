@@ -299,10 +299,8 @@ export class AdminController {
   // List bookings with optional filters
   static async listBookings(req: Request, res: Response): Promise<void> {
     try {
-      const { shop_id, barber_id, from, to, status } = req.query as Record<
-        string,
-        string
-      >;
+      const { shop_id, barber_id, from, to, status, date } =
+        req.query as Record<string, string>;
 
       if (!shop_id) {
         res.status(400).json({ success: false, error: "shop_id is required" });
@@ -311,9 +309,23 @@ export class AdminController {
 
       const query: any = { shop_id };
       if (barber_id) query.barber_id = barber_id;
-      if (status) query.status = status;
 
-      if (from || to) {
+      // Handle status filtering - default to pending or confirmed if not specified
+      if (status) {
+        query.status = status;
+      } else {
+        query.status = { $in: ["pending", "confirmed"] };
+      }
+
+      // Handle date filtering
+      if (date) {
+        // Single date filter
+        const targetDate = new Date(date + "T00:00:00.000Z");
+        const nextDay = new Date(targetDate);
+        nextDay.setDate(nextDay.getDate() + 1);
+        query.date = { $gte: targetDate, $lt: nextDay };
+      } else if (from || to) {
+        // Date range filter
         const dateQuery: any = {};
         if (from) dateQuery.$gte = new Date(from + "T00:00:00.000Z");
         if (to) dateQuery.$lte = new Date(to + "T23:59:59.999Z");
